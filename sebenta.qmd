@@ -1,0 +1,310 @@
+---
+title: "RTMB - 1"
+format: pdf
+editor: visual
+---
+
+# Setup
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+#| message: false
+#| warning: false
+
+# install.packages('TMB', type = 'source', lib = .libPaths()[2]) 
+library('RTMB', lib.loc = .libPaths()[2])
+library('tidyverse')
+library(CatDyn)
+library(tmbstan)
+library(shinystan)
+
+load("data/df_effort_m_mbw_otb.Rdata")
+
+precip = c(115.33, 245.93,193.93, -229.47,-76.47,
+           250.33, 177,73, 115.63, 90.13, -299.57,
+           -338.37,97.18, -317.67, -198.74,-14.07,
+           221.67, -90.97, -205.97, 98.03, 256.73,
+           -241.87, 150.13, -300.17, 98.43, -85.87,
+           -94.67,-156.87,-43.87,-106.37) + 735.8 + 105.7
+anos = 1995:2023
+
+```
+
+# Day 1
+
+* Parametric vs non-parametric functions
+* Parametric functions rely on probability distributions with their respective **likelihood functions**.
+
+Sometimes the mean is not a parameter in the distribution. It may be advisable, for some data, to include the mean in the probability density function (*pdf*) so we are able to model it.
+
+## Edge cases: Zero-inflated data
+
+## Edge cases: Censored data
+
+Data that, for some reason such as detection limits or time constraints, is understood to only reflect a subset or a small window of the complete range of the distribution.
+
+Another good example would be truncated data, ie a machine that records 10 for each reading that goes over 10, ie *flatlining*.
+
+## The difference between *pdf* and likelihood functions:
+
+Likelihood is a function of the *pdf*:
+
+$$
+L(Y|\theta) = \prod_{i=1}^n PDF(y_i,\theta)
+$$
+
+
+## Loglikelihood functions in **R**:
+
+Given a vector *Y*, can we assess the loglikelihood of their distribution being normal with $\mu = 4$ and $\sigma =1$ ?
+
+```{r}
+# data points
+Y = c(5,4,3,6)
+
+# loglikelihood for each point
+res = dnorm(c(5,4,3,6), 4, 1, log = T)
+
+# loglikelihood for this set of parameters and this data set
+sum(res) 
+```
+## Metropolis - Hastings algorithm for MCMC
+
+* Consider the parameter $U$
+* Take a guess for the value for $U$: $U^0 = u$
+* Begin iteration $t$
+* Take a candidate distribution with density $q(u)$
+* Draw $v$ from $q(u)$
+* Compute 
+
+$$
+r = \frac{P(v|Y)}{P(u|Y)}
+$$
+
+* Draw a random number $z$ such as $z \in [0,1]$
+* Update $U^t$: if $r > z, U^t = v$
+* Else, if $r < z, U^t = u$
+* Iterate 2-5 times
+
+## Example in RTMB
+
+First, by hand:
+
+```{r}
+trueA = 5
+trueB = 0
+trueSd = 100
+sampleSize = 1000
+
+# create independent x-values 
+x = (-(sampleSize-1)/2):((sampleSize-1)/2)
+
+# create dependent values according to ax + b + N(0,sd)
+y =  trueA * x + trueB + rnorm(n=sampleSize,mean=0,sd=trueSd)
+plot(x,y, main="Test Data")
+
+
+likelihood = function(param){
+  a = param[1]
+  b = param[2]
+  sd = param[3]
+  
+  pred = a*x + b
+  singlelikelihoods = dnorm(y, mean = pred, sd = sd, log = T)
+  sumll = sum(singlelikelihoods)
+  return(sumll)    
+}
+
+# Example: plot the likelihood profile of the slope a
+slopevalues = function(x){
+  return(likelihood(c(x, trueB, trueSd)))}
+
+slopelikelihoods = lapply(seq(3, 7, by=.05), slopevalues )
+plot (seq(3, 7, by=.05),
+      slopelikelihoods ,
+      type="l",
+      xlab = "values of slope parameter a",
+      ylab = "Log likelihood")
+
+# Prior distribution
+prior = function(param){
+  a = param[1]
+  b = param[2]
+  sd = param[3]
+  aprior = dunif(a, min=0, max=10, log = T)
+  bprior = dnorm(b, sd = 5, log = T)
+  sdprior = dunif(sd, min=0, max=300, log = T)
+  return(aprior+bprior+sdprior)
+}
+
+posterior = function(param){
+  return (likelihood(param) + prior(param))
+}
+
+######## Metropolis algorithm ################
+proposalfunction = function(param){
+  return(rnorm(3,mean = param, sd= c(0.1,0.5,0.3)))
+}
+
+run_metropolis_MCMC = function(startvalue, iterations){
+  chain = array(dim = c(iterations+1,3))
+  chain[1,] = startvalue
+  for (i in 1:iterations){
+    proposal = proposalfunction(chain[i,])
+    
+    probab = exp(posterior(proposal) - posterior(chain[i,]))
+    if (runif(1) < probab){
+      chain[i+1,] = proposal
+    }else{
+      chain[i+1,] = chain[i,]
+    }
+  }
+  return(chain)
+}
+
+startvalue = c(4,0,10)
+chain = run_metropolis_MCMC(startvalue, 100000)
+burnIn = 5000
+acceptance = 1-mean(duplicated(chain[-(1:burnIn),]))
+
+### Summary: #######################
+par(mfrow = c(2,3))
+hist(chain[-(1:burnIn),1],nclass=30, ,
+     main="Posterior of a", xlab="True value = red line" )
+abline(v = mean(chain[-(1:burnIn),1]))
+abline(v = trueA, col="red" )
+hist(chain[-(1:burnIn),2],nclass=30, 
+     main="Posterior of b", xlab="True value = red line")
+abline(v = mean(chain[-(1:burnIn),2]))
+abline(v = trueB, col="red" )
+hist(chain[-(1:burnIn),3],nclass=30, 
+     main="Posterior of sd", xlab="True value = red line")
+abline(v = mean(chain[-(1:burnIn),3]) )
+abline(v = trueSd, col="red" )
+plot(chain[-(1:burnIn),1], type = "l", 
+     xlab="True value = red line" , 
+     main = "Chain values of a", )
+abline(h = trueA, col="red" )
+plot(chain[-(1:burnIn),2], type = "l", 
+     xlab="True value = red line" , 
+     main = "Chain values of b", )
+abline(h = trueB, col="red" )
+plot(chain[-(1:burnIn),3], type = "l", 
+     xlab="True value = red line" , 
+     main = "Chain values of sd", )
+abline(h = trueSd, col="red" )
+# for comparison:
+summary(lm(y~x))
+
+
+```
+
+Now with RTMB:
+
+```{r}
+# library(RTMB)
+dat = list()
+
+# getting the data from the previous example.
+# DO NOT USE DATA FRAMES!
+dat$y1 = as.vector(y)
+dat$x1 = as.vector(x)
+
+# initialize parameter list with initial estimates
+par = list()
+par$logSdy = 5 # We must ensure positive numbers, so we work with logs
+par$b = 0
+par$a = 1
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data 
+  sdy = exp(logSdy) # will be used by dnorm below
+  jnll = 0 # init jnll
+  for(i in 1:length(y1)){
+      predy = a*x1[i]+b
+      jnll = jnll - dnorm(y1[i], predy, sdy, log=TRUE)
+  }
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj = MakeADFun(jnll, par)
+fit = nlminb(obj$par, obj$fn, obj$gr)
+
+sdr = sdreport(obj)
+pl = as.list(sdr,"Est")
+plsd = as.list(sdr,"Std")
+
+# library(tmbstan)
+fit2 = tmbstan(obj,chains=1,iter=1000)
+
+```
+
+
+```{r}
+#| eval: false
+# library(shinystan)
+launch_shinystan(fit2)
+```
+
+## Other examples
+
+```{r}
+# library(RTMB)
+trueA = 10
+trueB = 2
+trueSd = 1009
+sampleSize = 10000
+
+# create independent x-values 
+x = (-(sampleSize-1)/2):((sampleSize-1)/2)
+
+# create dependent values according to ax + b + N(0,sd)
+y =  trueA * x + trueB + rnorm(n=sampleSize,mean=0,sd=trueSd)
+plot(x,y, main="Test Data")
+
+
+dat = list()
+
+# getting the data from the previous example.
+# DO NOT USE DATA FRAMES!
+dat$y1 = as.vector(y)
+dat$x1 = as.vector(x)
+
+# initialize parameter list with initial estimates
+par = list()
+par$logSdy = 5 # We must ensure positive numbers, so we work with logs
+par$b = 1
+par$a = 1
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data 
+  sdy = exp(logSdy) # will be used by dnorm below
+  jnll = 0 # init jnll
+  for(i in 1:length(y1)){
+      predy = a*x1[i]+b
+      jnll = jnll - dnorm(y1[i], predy, sdy, log=TRUE)
+  }
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj = MakeADFun(jnll, par)
+fit = nlminb(obj$par, obj$fn, obj$gr)
+
+sdr = sdreport(obj)
+pl = as.list(sdr,"Est")
+plsd = as.list(sdr,"Std")
+
+# library(tmbstan)
+fit2 = tmbstan(obj,chains=1,iter=1000)
+
+```
+
