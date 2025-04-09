@@ -1,0 +1,239 @@
+---
+title: "CatDyn"
+format: pdf
+editor: visual
+---
+
+# Setup
+
+```{r}
+#| message: false
+#| warning: false
+
+# install.packages('TMB', type = 'source', lib = .libPaths()[2]) 
+library('RTMB', lib.loc = .libPaths()[2])
+library('tidyverse')
+library(CatDyn)
+library(tmbstan)
+library(shinystan)
+
+load("data/df_effort_m_mbw_otb.Rdata")
+
+precip = c(-16.67,
+           115.33, 245.93, 193.93, -229.47,-76.47,
+           250.33, 177.73, 115.63, 90.13, -299.57,
+           -338.37,97.18, -317.67, -198.74,-14.07,
+           221.67, -90.97, -205.97, 98.03, 256.73,
+           -241.87, 150.13, -300.17, 98.43, -85.87,
+           -94.67,-156.87,-43.87,-106.37) + 
+  735.8 + 105.7
+anos = 1994:2023
+
+```
+
+# Data
+
+## Catch $C_t$
+
+Catch is obtained via reported landings. It is converted to number of individuals via a mean body weight model (not described here). Catches in MAGD are typically modeled in numbers.
+
+```{r}
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = 1:348,
+                y = catch_otb/1000)) + 
+  theme_bw() + 
+  labs(title = 'nominal catches (tons)')
+
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = 1:348,
+                y = catch_otb/mbw_rand / 1000)) + 
+  theme_bw() + 
+  labs(title = 'nominal catches (n x 1000)')
+
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = month_sale,
+                y = catch_otb/mbw_rand / 1000,
+                group =1)) + 
+  theme_bw() + 
+  facet_wrap(year_sale ~.) + 
+  labs(title = 'nominal catches (n x 1000)')
+```
+
+## Effort $E_t$
+
+Since we are dealing with a polyvalent fishery that employs a wide range of fishing gears and operates in vessels that are small enough to be exempt from keeping logbooks, effort data can be estimated at best by attempting to count fishing days in each month.
+
+```{r}
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = 1:348,
+                y =effort_otb)) + 
+  theme_bw() + 
+  labs(title = 'Effort (fishing days)')
+
+df_effort %>% 
+  ggplot() + 
+  geom_point(aes(x = effort_otb,
+                y = catch_otb)) + 
+  theme_bw() + 
+  labs(title = 'Catch ~ Effort')
+
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = 1:348,
+                y = catch_otb/max(catch_otb)),
+            color = 'red') +
+  geom_line(aes(x = 1:348,
+                 y = effort_otb/max(effort_otb))) + 
+  theme_bw() + 
+  labs(title = 'Trends for Catch (red) ~ Effort (black)')
+```
+
+## Auxiliary data 
+
+* Mean body weight model used to convert catch in weight to numbers
+
+```{r}
+df_effort %>% 
+  ggplot() +
+  # geom_line(aes(x = week,
+  #               y = mbw,
+  #               group = year_sale)) +
+  geom_line(aes(x = month_sale,
+                y = mbw_rand,
+                group = year_sale,
+                color = year_sale)) + 
+  # scale_color_manual(values = cores2) +
+  # facet_wrap(year_sale ~.) + 
+  theme_bw() + 
+  theme(legend.position = 'none') +
+  labs(y = 'mean body weight (kg)')
+```
+
+* Yearly precipitation data for the region, to be incorporated at a later date
+
+```{r}
+  ggplot() + 
+  geom_line(aes(x = anos,
+                y = precip)) + 
+  theme_bw() + 
+  labs(title = 'Yearly precipitation')
+```
+
+* Index vectors to signal the occurence of Recruitment and Female exit events $I_j$ and $J_l$:
+
+These vectors take a value of 0 before 0 and 1 during and after. They are reset at the beginning of each fishing season, which for this work has been conventioned to be at 1 January.
+
+# Parameters to be estimated
+
+* $\alpha$ is the abundance response
+
+* $\beta$  is the effort response
+
+Both allow non-linearity for $E_t$ and $N_t$;
+
+* $k$ is a scaling factor
+
+* $M$ is the natural mortality (with $m = e^{-\frac{M}{2}}$)
+
+* $N_0$ is the initial abundance of the stock at $t_0$
+
+
+# Formulation, step by step
+
+Consider the condensed formulation of this model:
+
+\begin{equation}
+    \begin{aligned}
+    \label{eq:catdyn_1}
+C_t = kE_t^\alpha N_t^\beta = m kE_t^\alpha f_t(M,N_0, C_{i<t}, R, S) \\
+\textrm{with} \quad m = e^{-\frac{M}{2}}
+    \end{aligned}
+\end{equation}
+
+In order to incorporate this model in RTBM, we will have to break down the  abundance estimate ($N_t^\beta$) into chunks that are easier to process. First we present the complete formulation and then we'll break down the chunks of $f(t)$ *ie*, everything that is raised to $\beta$.
+
+\begin{equation}
+    \begin{aligned}
+    \label{eq:catdyn_2}
+C_t = kE_t^\alpha  m \left( N_0 e^{-Mt} -m \left[ \sum_{i=i}^{i=t-1} C_{i,i} e^{-M(t-i-1)} \right] + \sum_{j=1}^{j=u} I_j R_j e^{-M(t-\tau_j)} - \sum_{l=1}^{l=v} J_l S_l e^{-M(t-\upsilon_l} \right) ^ \beta
+    \end{aligned}
+\end{equation}
+
+```{r}
+N0 = 1000000
+x = 1:348
+M = 0.05
+```
+
+
+## Chunk 1: Exponential Population Growth
+
+\begin{equation}
+    \begin{aligned}
+    \label{eq:catdyn_ch1}
+N_0 e^{-Mt}
+    \end{aligned}
+\end{equation}
+
+This is simply unconstrained population growth, modulated by the natural mortality $M$. Tentative approach:
+
+```{r}
+res_1 = c()
+# chunk 1
+for(tt in 1:length(x)){
+ch1 = N0 * exp(-M*tt)
+
+res_1[tt] = ch1
+}
+
+  ggplot() + 
+  geom_line(aes(x = x,
+                y = res_1)) + 
+  theme_bw() + 
+  labs(title = 'chunk 1')
+```
+
+
+## Chunk 2: Catch carry over
+
+\begin{equation}
+    \begin{aligned}
+    \label{eq:catdyn_ch2}
+ -m \left[ \sum_{i=i}^{i=t-1} C_{i,i} e^{-M(t-i-1)} \right] 
+    \end{aligned}
+\end{equation}
+
+This section incorporates the expected value for the catch in each year, with decay from natural mortality that intensifies the further you are from that year. It is explicitly recursive, unlike chunk 1, and therefore the code must account for that correctly. Specfifically, $C_i$ accounts for the *entire* estimate and therefore this chunk can't be correctly computed without the remaining chunks
+
+```{r}
+res_2 = c()
+# chunk 1
+c_i = c()
+for(tt in 1:length(x)){
+  for(i in 1:(tt-1)){
+    catch = ifelse(tt == 1, res_1[1], c_i[tt-1])
+    c_i[i] = catch^-M*(tt-i-1)}
+  res_2[tt] = sum(c_i)*exp(-M*tt)
+}
+
+  ggplot() + 
+  geom_line(aes(x = x,
+                y = res_2)) + 
+  theme_bw() + 
+  labs(title = 'chunk 2')
+```
+
+## Chunk 3: Recruitment pulse input
+
+\begin{equation}
+    \begin{aligned}
+    \label{eq:catdyn_2}
+    \sum_{j=1}^{j=u} I_j R_j e^{-M(t-\tau_j)}
+    \end{aligned}
+\end{equation}
+
+As described before, we require an index vector that is correctly specified. There is no documentation on how to handle multiple pulses in the same fishing season.
