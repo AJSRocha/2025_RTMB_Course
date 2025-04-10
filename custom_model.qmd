@@ -18,6 +18,15 @@ library(tmbstan)
 library(shinystan)
 
 load("data/df_effort_m_mbw_otb.Rdata")
+# sample data for testing purposes
+iotc = read.csv('data/IOTC-DATASETS-2025-03-13-CELongline.csv')
+
+iotc =
+iotc %>% filter(Fleet == 'JPN    ') %>%
+  filter(!is.na(YFT.NO)) %>% 
+  group_by(Year, MonthStart) %>% 
+  summarise(Effort = sum(Effort, na.rm =T),
+            Catch = sum(YFT.NO, na.rm = T ) *0.01955034)
 
 precip = c(-16.67,
            115.33, 245.93, 193.93, -229.47,-76.47,
@@ -28,6 +37,21 @@ precip = c(-16.67,
            -94.67,-156.87,-43.87,-106.37) + 
   735.8 + 105.7
 anos = 1994:2023
+
+mod_aux = lm(df_effort$catch ~ df_effort$effort)
+
+df_effort = 
+  df_effort %>% 
+  mutate(catch = case_when(year_sale == 2005 & month_sale == '09' ~ 
+                              effort * mod_aux$coefficients[2] +  mod_aux$coefficients[1],
+         T ~ catch),
+         catch_otb = case_when(year_sale == 2005 & month_sale == '09' ~ 
+                                  effort_otb * mod_aux$coefficients[2] + mod_aux$coefficients[1],
+                            T ~ catch_otb)) %>% 
+  mutate(catch_otb = case_when(catch_otb == 0 ~ mean(catch_otb), 
+                               T ~ catch_otb),
+         effort_otb = case_when(effort_otb == 4 ~ mean(effort_otb),
+                                T ~ effort_otb))
 
 ``` 
 
@@ -71,7 +95,7 @@ C_{t+1} = \phi \cdot C_t  + \epsilon_t
 $$
 
 ```{r}
-#| eval: false
+#| eval: true
 dat = list()
 
 # DO NOT USE DATA FRAMES!
@@ -142,7 +166,7 @@ C_{t+1} = \phi \cdot C_t + \alpha\cdot P_t + \epsilon_t
 $$
 
 ```{r}
-#| eval: false
+#| eval: true
 dat = list()
 
 # DO NOT USE DATA FRAMES!
@@ -212,7 +236,7 @@ plsd2 = as.list(sdr2,"Std")
 We account for uncertainty in $\phi$, $\alpha$ and $\sigma_{t}$, so we include distribution parameters for these quantities to be estimated.
 
 ```{r}
-#| eval: false
+#| eval: true
 dat = list()
 
 # DO NOT USE DATA FRAMES!
@@ -220,6 +244,8 @@ dat = list()
 
 dat$y = as.vector(df_effort$catch_otb)  # catches
 dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
+
+dat$y
 
 # initialize parameter list with initial estimates
 par = list()
@@ -281,20 +307,6 @@ plsd3 = as.list(sdr3,"Std")
 sdr3
 ```
 
-#
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ```{r}
 #| eval: false
@@ -304,7 +316,7 @@ fit2 = tmbstan(obj,chains=1,iter=1000)
 launch_shinystan(fit2)
 ```
 
-## Prediction plots (generated from the deterministic part of the jnll function)
+### Prediction plots (generated from the deterministic part of the jnll function)
 
 ```{r}
   df_effort %>% 
@@ -321,7 +333,7 @@ launch_shinystan(fit2)
   labs(title = 'With (green) and without (red) precipitation')
 ```
 
-## Prediction plots from generated data via the parameters
+### Prediction plots from generated data via the parameters
 
 ```{r}
 yhat = c()
@@ -358,7 +370,7 @@ df_effort %>%
 Let $B_t$ be the stock biomass at time $t$; The most simplistic Schaefer formulation states that, if cephalopod stocks followed the usual equilibrium assumptions, then
 
 $$
-B_{t+1} = r \cdot B_t \left(1 - \frac{B_t}{K} \right) - C_t
+B_{t+1} = B_t +r \cdot B_t \left(1 - \frac{B_t}{K} \right) - C_t
 $$
 
 We will take a first pass at inference on $B_t$ by treating it as a latent variable and using $C_t$ as the observation sequence. The link between $B_t$ and $C_t$ is given by
@@ -377,26 +389,30 @@ for this to work, we need to estimate $q$, $K$, $r$, $B_0$ as well as every poin
 
 
 ```{r}
-#| eval: false
+#| eval: true
 dat = list()
 
 # DO NOT USE DATA FRAMES!
 # P_{t-1} = lagP
 
 dat$Ct = as.vector(df_effort$catch_otb)  # catches
-# dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
 dat$Et = as.vector(df_effort$effort_otb) # effort
+# dat$Ct = as.vector(iotc$Catch)
+# dat$Et = as.vector(iotc$Effort)
 
 # initialize parameter list with initial estimates
 par = list()
-par$Bt = numeric(length(dat$Ct)) # init empty vector
-par$q = 1
-par$r = 1
-par$K = 1
-par$B0 = 4*mean(dat$Ct)
+par$Bt = as.vector(rep(10,length(dat$Ct)))# init empty vector
+par$meanBt = 100000
+
+par$q = 0.2
+par$r = 0.5
+par$K = 4*max(dat$Ct)
+par$B0 = 0.9*par$K # % of stock depletion at time zero
 
 par$logsdBt = 1
 par$logsdCt = 1
+par$logsdB0 = 1000
 # First pass: Linear model, lol
 
 # initialize joint negative loglikelihood function
@@ -407,28 +423,40 @@ jnll = function(par){
   Ct = OBS(Ct)
   sdBt = exp(logsdBt)
   sdCt = exp(logsdCt)
+  sdB0 = exp(logsdB0)
   
   # assemble model    
   jnll = 0 # init jnll
   
+ 
+  ## Prior distributions
+  ## The 1 in the mean fixes the prior distribution of r
+  jnll = jnll - dexp(r,1, log = TRUE)
+  jnll = jnll - dexp(q,0.1, log = TRUE)
+  jnll = jnll - dnorm(K, 1000000, 1000, log = TRUE)
   ## From the observation equation
+ 
+  
+  ## From the process equation
+  Bt[1] = B0
+  for(i in 2:length(Ct)){
+    Bt[i] = Bt[i-1] + r * Bt[i-1]*(1-(Bt[i-1]/K)) - Ct[i-1]
+    predBt = Bt[i]
+    jnll = jnll - dnorm(predBt, predBt, sdBt, log=TRUE)
+    
+  }
+  
   catch_predictions = c()
   for(i in 1:length(Ct)){
    Ct_hat = q*Bt[i]*Et[i]
    jnll = jnll -dnorm(Ct[i], Ct_hat, sdCt, log = TRUE)
    catch_predictions[i] = Ct_hat
- }
-  
-  ## From the process equation
-  predictions = c(B0)
-  
-  for(i in 2:length(Ct)){
-    predBt = r * Bt[i-1]*(1-(Bt[i-1]/K))-Ct[i-1]
-    jnll = jnll - dnorm(Bt[i], predBt, sdBt, log=TRUE)
-    predictions[i] = predBt
   }
-  REPORT(predictions)
+   
+
   REPORT(catch_predictions)
+  REPORT(B0)
+  REPORT(Bt)
   jnll
 }
 
@@ -442,24 +470,25 @@ sdr4 = sdreport(obj4)
 pl4 = as.list(sdr4,"Est")
 plsd4 = as.list(sdr4,"Std")
 
-sdr4
-
+# sdr4
+obj4$report()$Bt
+plot(obj4$report()$Bt)
 ```
 
 ### Plotting Biomass estimates
 
 ```{r}
 ggplot() +
-  geom_line(aes(x = 1:348,
+  geom_line(aes(x = 1:length(dat$Ct),
                 y = obj4$report()$catch_predictions),
             color = 'red') +
-  geom_line(aes(x = 1:348,
-                y = df_effort$catch_otb)) +
+  geom_point(aes(x = 1:length(dat$Ct),
+                y = dat$Ct)) +
   theme_bw()
 
 
 
-temp = data.frame(x = obj4$report()$predictions) %>% 
+temp = data.frame(x = obj4$report()$Bt) %>% 
   mutate(y = sdr4$par.fixed[['r']]*x *
            (1-(x/sdr4$par.fixed[['K']])))
 
@@ -468,6 +497,18 @@ ggplot() +
                 x = temp$x),
             color = 'red') +
 
+  theme_bw()
+
+
+ggplot() +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj4$report()$catch_predictions),
+            color = 'red') +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj4$report()$Bt),
+            color = 'purple') +  
+  geom_point(aes(x = 1:length(dat$Ct),
+                y = dat$Ct)) +
   theme_bw()
 ```
 
@@ -513,4 +554,65 @@ novo %>%
 novo
 ```
 
-#
+# Report starts here
+
+# Foreword
+
+# Data description and context
+
+## Catch
+
+For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
+
+## Effort
+
+## Precipitation
+
+## mean body weight
+
+# First act: I flunked my time series course twice
+
+Mention on how some correlation was observed
+
+## Model 1: Baseline
+
+## Model 2: With Precipitation
+
+# Second act: I did come to a SEM course, after all
+
+## Model 1: True catch as a latent variable
+
+Following up on the previous idea, the instructors proposed the notion of the true catch being a latent variable whose process equation could be described by an **AR(p)** time series, and the observed catch $C_t$ as a result of the failure to realize or observe the maximum potential catch.
+
+$$
+\begin{cases}
+  Process: X_t = \phi X_{t-1} + \epsilon_t \\
+  Observation: C_t = \alpha X_t + \dots
+\end{cases}
+$$
+
+## Model 2: The Schaefer Surplus Production Model
+
+## Model 3: A Surplus Production Model with the catch included as an autorregressive term
+
+This variation was proposed by the instructors with the explicit goal of limiting the impact of the catch in the existing biomass. $C_t$ is
+shifted from an additive term to a multiplicative one, with the addition of a scaling coefficient $\alpha$, to keep its impact grounded between 0 and 1.
+
+
+$$
+B_{t+1} = B_t +r \cdot B_t \left(1 -\frac{B_t}{K} \right) \cdot \alpha C_t + \epsilon_t
+$$
+
+If we combine $\alpha$ and $r$ into a single constant $\alpha$, which could be seen as rescaled natural intrinsic growth, then we could arrange it as
+
+$$
+B_{t+1} = B_t \cdot (1 + \alpha ) \cdot \left(1 - \frac{B_t}{K} \right) \cdot C_t + \epsilon_t
+$$
+
+# Third act: The mask falls, and the AIC rises
+
+## Model 1: GDM, as seen on CatDyn
+
+## Model 2: What if it rained on Model 1
+
+# Conclusion and Final Remarks.
