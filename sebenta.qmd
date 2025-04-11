@@ -577,3 +577,6 @@ abline(model)
 hist(pl$Zk)
 ```
 
+# Day 4
+
+No scripts were worked on today. Only lectures and personal work

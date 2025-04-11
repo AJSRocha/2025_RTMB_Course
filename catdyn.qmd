@@ -92,9 +92,9 @@ df_effort %>%
   labs(title = 'Trends for Catch (red) ~ Effort (black)')
 ```
 
-## Auxiliary data 
+## Auxiliary data
 
-* Mean body weight model used to convert catch in weight to numbers
+-   Mean body weight model used to convert catch in weight to numbers
 
 ```{r}
 df_effort %>% 
@@ -113,7 +113,7 @@ df_effort %>%
   labs(y = 'mean body weight (kg)')
 ```
 
-* Yearly precipitation data for the region, to be incorporated at a later date
+-   Yearly precipitation data for the region, to be incorporated at a later date
 
 ```{r}
   ggplot() + 
@@ -123,24 +123,23 @@ df_effort %>%
   labs(title = 'Yearly precipitation')
 ```
 
-* Index vectors to signal the occurence of Recruitment and Female exit events $I_j$ and $J_l$:
+-   Index vectors to signal the occurence of Recruitment and Female exit events $I_j$ and $J_l$:
 
 These vectors take a value of 0 before 0 and 1 during and after. They are reset at the beginning of each fishing season, which for this work has been conventioned to be at 1 January.
 
 # Parameters to be estimated
 
-* $\alpha$ is the abundance response
+-   $\alpha$ is the abundance response
 
-* $\beta$  is the effort response
+-   $\beta$ is the effort response
 
 Both allow non-linearity for $E_t$ and $N_t$;
 
-* $k$ is a scaling factor
+-   $k$ is a scaling factor
 
-* $M$ is the natural mortality (with $m = e^{-\frac{M}{2}}$)
+-   $M$ is the natural mortality (with $m = e^{-\frac{M}{2}}$)
 
-* $N_0$ is the initial abundance of the stock at $t_0$
-
+-   $N_0$ is the initial abundance of the stock at $t_0$
 
 # Formulation, step by step
 
@@ -154,7 +153,7 @@ C_t = kE_t^\alpha N_t^\beta = m kE_t^\alpha f_t(M,N_0, C_{i<t}, R, S) \\
     \end{aligned}
 \end{equation}
 
-In order to incorporate this model in RTBM, we will have to break down the  abundance estimate ($N_t^\beta$) into chunks that are easier to process. First we present the complete formulation and then we'll break down the chunks of $f(t)$ *ie*, everything that is raised to $\beta$.
+In order to incorporate this model in RTBM, we will have to break down the abundance estimate ($N_t^\beta$) into chunks that are easier to process. First we present the complete formulation and then we'll break down the chunks of $f(t)$ *ie*, everything that is raised to $\beta$.
 
 \begin{equation}
     \begin{aligned}
@@ -168,7 +167,6 @@ N0 = 1000000
 x = 1:348
 M = 0.05
 ```
-
 
 ## Chunk 1: Exponential Population Growth
 
@@ -196,7 +194,6 @@ res_1[tt] = ch1
   theme_bw() + 
   labs(title = 'chunk 1')
 ```
-
 
 ## Chunk 2: Catch carry over
 
