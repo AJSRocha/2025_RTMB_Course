@@ -11,7 +11,7 @@ editor: visual
 #| warning: false
 
 # install.packages('TMB', type = 'source', lib = .libPaths()[2]) 
-library('RTMB', lib.loc = .libPaths()[2])
+library('RTMB', lib.loc = .libPaths()[1])
 library('tidyverse')
 library(CatDyn)
 library(tmbstan)
@@ -53,88 +53,15 @@ df_effort =
          effort_otb = case_when(effort_otb  < 150 ~ mean(effort_otb),
                                 T ~ effort_otb))
 
-``` 
-
+```
 
 # Defining the model
 
-We have a biomass time series that is unobservable and therefore, latent. We can use our measurements for Capture and Effort at month $t$ ($C_t$ and $E_t$). Our challenge will come from incorporating the precipitation from the previous year, $P_{t-1}$   
-
-
+We have a biomass time series that is unobservable and therefore, latent. We can use our measurements for Capture and Effort at month $t$ ($C_t$ and $E_t$). Our challenge will come from incorporating the precipitation from the previous year, $P_{t-1}$
 
 ## Second model: Added precipitation
 
-In this version, we added rainfall $P_t$ from the previous year to the model. The series is actually lagged, so any given $P_{1995}$ will actually refer to the year of 1994, *eg*. This was done for ease of integration. 
 
-$$
-C_{t+1} = \phi \cdot C_t + \alpha\cdot P_t + \epsilon_t
-$$
-
-```{r}
-#| eval: true
-dat = list()
-
-# DO NOT USE DATA FRAMES!
-# P_{t-1} = lagP
-
-dat$y = as.vector(df_effort$catch_otb)  # catches
-dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
-
-# initialize parameter list with initial estimates
-par = list()
-par$logSdY = 1 # We must ensure positive numbers, so we work with logs
-par$phi = 1
-par$alpha = 1
-par$y0 = mean(dat$y)
-
-# if we treat phi and alpha as priors, then we must specify the distribution
-# therefore we would need to add dispersion parameters
-# If we fail to do so, a flat uniform distribution is defaulted to 
-# par$logsdphi = 0
-# par$logsdalpha = 0
-# First pass: Linear model, lol
-
-# initialize joint negative loglikelihood function
-jnll = function(par){
-  getAll(par, dat) # invoke all the parameters and data
-  
-  # gather and cleanup pars
-  y = OBS(y)
-  sdY = exp(logSdY)
-  # sdalpha = exp(logsdalpha) 
-  # sdphi = exp(logsdphi) # will be used by dnorm below
-  
-  # assemble model    
-  jnll = 0 # init jnll
-  ## from alpha
-  # jnll = jnll - dnorm(alpha, 1, log = TRUE)
-  ## from phi
-  # jnll = jnll - dnorm(phi, 1, log = TRUE)
-  ## from y0
-  # jnll = jnll - dnorm(y0, 1, log = TRUE)
-  
-  ## From the observation process
-  predictions = c()
-  for(i in 1:length(x)){
-    if(i == 1) {predY = phi*y0 + alpha*x[i]}
-    else{predY = phi*y[i-1]+ alpha*x[i]}
-    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
-    predictions[i] = predY
-  }
-  REPORT(predictions)
-  jnll
-}
-
-# quick test: do we get a number? This number should be a likelihood.
-jnll(par)
-
-obj2 = MakeADFun(jnll, par)
-fit2 = nlminb(obj2$par, obj2$fn, obj2$gr)
-
-sdr2 = sdreport(obj2)
-pl2 = as.list(sdr2,"Est")
-plsd2 = as.list(sdr2,"Std")
-```
 
 ## Third model: Now with hard priors
 
@@ -212,7 +139,6 @@ plsd3 = as.list(sdr3,"Std")
 sdr3
 ```
 
-
 ```{r}
 #| eval: false
 #| # library(tmbstan)
@@ -270,7 +196,304 @@ df_effort %>%
   labs(title = 'Simulated data with (green) and without (red) precipitation')
 ```
 
-## First attempt at a state-approach
+
+
+
+
+### Plotting Biomass estimates
+
+```{r}
+ggplot() +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj4$report()$catch_predictions),
+            color = 'red') +
+  geom_point(aes(x = 1:length(dat$Ct),
+                y = dat$Ct)) +
+  theme_bw()
+
+
+
+temp = data.frame(x = obj4$report()$biomass_predictions) %>% 
+  mutate(y = sdr4$par.fixed[['r']]*x *
+           (1-(x/sdr4$par.fixed[['K']])))
+
+ggplot() +
+  geom_point(aes(y  = temp$y,
+                x = temp$x),
+            color = 'red') +
+
+  theme_bw()
+
+
+ggplot() +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj4$report()$catch_predictions),
+            color = 'red') +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj4$report()$biomass_predictions),
+            color = 'purple') +  
+  geom_point(aes(x = 1:length(dat$Ct),
+                y = dat$Ct)) +
+  theme_bw()
+```
+
+# Report starts here
+
+# Foreword
+
+# Data description and context
+
+## Catch $C_t$
+
+Catch is obtained via reported landings. It can converted to number of individuals via a mean body weight model (not described here), which is prefered in models such as generalized depletion models (GDMs).
+
+For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
+
+## Effort $E_t$
+
+Since we are dealing with a polyvalent fishery that employs a wide range of fishing gears and operates in vessels that are small enough to be exempt from keeping logbooks, effort data can be estimated at best by attempting to count fishing days in each month. Outliers in this series were dealt with as described earlier.
+
+```{r}
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = 1:348,
+                y =effort_otb)) + 
+  theme_bw() + 
+  labs(title = 'Effort (fishing days)')
+```
+
+## Catch - Effort Dynamics
+
+```{r}
+df_effort %>% 
+  ggplot() + 
+  geom_point(aes(x = effort_otb,
+                y = catch_otb)) + 
+  theme_bw() + 
+  labs(title = 'Catch ~ Effort')
+```
+
+```{r}
+
+modelo = lm(df_effort$catch_otb/df_effort$effort_otb ~ df_effort$effort_otb)
+
+a = modelo$coefficients[["df_effort$effort_otb"]]
+b = modelo$coefficients[['(Intercept)']]
+
+df_effort %>% 
+ggplot() + 
+  geom_point(aes(x = effort_otb,
+                 y = catch_otb/effort_otb)) + 
+  geom_abline(slope = a, intercept = b, color = 'red') + 
+  theme_bw()
+
+novo = df_effort %>% 
+  mutate(
+  cpue_hat = predict(modelo, newdata = df_effort),
+                  Y = cpue_hat * df_effort$effort_otb)
+
+novo %>% 
+  ggplot() +
+  geom_point(aes(x = effort_otb,
+                 y = catch_otb), col = 'red') + 
+  geom_point(aes(x = effort_otb,
+                 y = Y)) + theme_bw()
+
+```
+
+## Precipitation $P_t$
+
+Just total rainfall in Algarve throught the series period. Unlike the other data, it has an yearly time step. This was done deliberatly, to accommodate the challenge of integrating data with mismatching time steps, something that occurs far too often.
+
+```{r}
+  ggplot() + 
+  geom_line(aes(x = anos,
+                y = precip)) + 
+  theme_bw() + 
+  labs(title = 'Yearly precipitation')
+```
+
+## Mean body weight
+
+Mean body weight model used to convert catch in weight to numbers. Based on samples collected at auction markets.
+
+```{r}
+df_effort %>% 
+  ggplot() +
+  # geom_line(aes(x = week,
+  #               y = mbw,
+  #               group = year_sale)) +
+  geom_line(aes(x = month_sale,
+                y = mbw_rand,
+                group = year_sale,
+                color = year_sale)) + 
+  # scale_color_manual(values = cores2) +
+  # facet_wrap(year_sale ~.) + 
+  theme_bw() + 
+  theme(legend.position = 'none') +
+  labs(y = 'mean body weight (kg)')
+```
+
+# First act: I flunked my time series course twice
+
+Mention on how some correlation was observed
+
+## Model 1: Baseline
+
+In this model we estimate $phi$ and $C_{0}$ (which the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation).
+
+$$
+C_{t+1} = \phi \cdot C_t  + \epsilon_t
+$$
+
+```{r}
+#| eval: true
+dat = list()
+
+dat$y = as.vector(df_effort$catch_otb)  # catches
+
+# initialize parameter list with initial estimates
+par = list()
+par$phi = 1 #ideally, should be bound between [-1,1]
+par$logsdY = 1 # We must ensure positive numbers, so we work with logs
+par$y0 = mean(dat$y)
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  y = OBS(y)
+  # fix the transformation, for the estimation
+  sdY = exp(logsdY)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  ## from alpha
+  # jnll = jnll - dnorm(alpha, 1, log = TRUE)
+  ## from phi
+  # jnll = jnll - dnorm(phi, 1, log = TRUE)
+  ## from y0
+  # jnll = jnll - dnorm(y0, 1, log = TRUE)
+  
+  ## From the observation process
+  predictions = c()
+  for(i in 1:length(y)){
+    if(i == 1) {predY = phi*y0}
+    else{predY = phi*y[i-1]}
+    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
+    predictions[i] = predY
+  }
+  REPORT(predictions)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj = MakeADFun(jnll, par)
+fit = nlminb(obj$par, obj$fn, obj$gr)
+
+sdr = sdreport(obj)
+pl = as.list(sdr,"Est")
+plsd = as.list(sdr,"Std")
+ggplot() + 
+  geom_point(aes(x = 1:length(dat$y),
+                 y = dat$y),
+            col = 'red') +
+  geom_line(aes(x = 1:length(dat$y),
+                y = obj$report()$predictions)) + 
+  theme_bw()
+```
+
+## Model 2: With Precipitation
+
+In this version, we added rainfall $P_t$ from the previous year to the model. The series is actually lagged, so any given $P_{1995}$ will actually refer to the year of 1994, *eg*. This was done for ease of integration.
+
+$$
+C_{t+1} = \phi \cdot C_t + \alpha\cdot P_t + \epsilon_t
+$$
+
+```{r}
+#| eval: true
+dat = list()
+
+# DO NOT USE DATA FRAMES!
+# P_{t-1} = lagP
+
+dat$y = as.vector(df_effort$catch_otb)  # catches
+dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
+
+# initialize parameter list with initial estimates
+par = list()
+par$logSdY = 1 # We must ensure positive numbers, so we work with logs
+par$phi = 1
+par$alpha = 1
+par$y0 = mean(dat$y)
+
+# if we treat phi and alpha as priors, then we must specify the distribution
+# therefore we would need to add dispersion parameters
+# If we fail to do so, a flat uniform distribution is defaulted to 
+# par$logsdphi = 0
+# par$logsdalpha = 0
+# First pass: Linear model, lol
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  y = OBS(y)
+  sdY = exp(logSdY)
+  # sdalpha = exp(logsdalpha) 
+  # sdphi = exp(logsdphi) # will be used by dnorm below
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  ## from alpha
+  # jnll = jnll - dnorm(alpha, 1, log = TRUE)
+  ## from phi
+  # jnll = jnll - dnorm(phi, 1, log = TRUE)
+  ## from y0
+  # jnll = jnll - dnorm(y0, 1, log = TRUE)
+  
+  ## From the observation process
+  predictions = c()
+  for(i in 1:length(x)){
+    if(i == 1) {predY = phi*y0 + alpha*x[i]}
+    else{predY = phi*y[i-1]+ alpha*x[i]}
+    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
+    predictions[i] = predY
+  }
+  REPORT(predictions)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj2 = MakeADFun(jnll, par)
+fit2 = nlminb(obj2$par, obj2$fn, obj2$gr)
+
+sdr2 = sdreport(obj2)
+pl2 = as.list(sdr2,"Est")
+plsd2 = as.list(sdr2,"Std")
+```
+
+# Second act: I did come to a SEM course, after all
+
+## Model 1: True catch as a latent variable
+
+Following up on the previous idea, the instructors proposed the notion of the true catch being a latent variable whose process equation could be described by an **AR(p)** time series, and the observed catch $C_t$ as a result of the failure to realize or observe the maximum potential catch.
+
+$$
+\begin{cases}
+  Process: X_t = \phi X_{t-1} + \epsilon_t \\
+  Observation: C_t = \alpha X_t + \dots
+\end{cases}
+$$
+
+## Model 2: The Schaefer Surplus Production Model
 
 Let $B_t$ be the stock biomass at time $t$; The most simplistic Schaefer formulation states that, if cephalopod stocks followed the usual equilibrium assumptions, then
 
@@ -291,7 +514,6 @@ B_t \sim N(q \cdot \frac{C_t}{E_t}, \sigma_{B_t})
 $$
 
 for this to work, we need to estimate $q$, $K$, $r$, $B_0$ as well as every point for $B_t$. Fun times! At this time, we will not attempt to directly model parameter uncertainty nor the process error, because life is already too hard as it is.
-
 
 ```{r}
 #| eval: true
@@ -386,233 +608,9 @@ obj4$report()$Bt
 plot(obj4$report()$Bt)
 ```
 
-### Plotting Biomass estimates
-
-```{r}
-ggplot() +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj4$report()$catch_predictions),
-            color = 'red') +
-  geom_point(aes(x = 1:length(dat$Ct),
-                y = dat$Ct)) +
-  theme_bw()
-
-
-
-temp = data.frame(x = obj4$report()$biomass_predictions) %>% 
-  mutate(y = sdr4$par.fixed[['r']]*x *
-           (1-(x/sdr4$par.fixed[['K']])))
-
-ggplot() +
-  geom_point(aes(y  = temp$y,
-                x = temp$x),
-            color = 'red') +
-
-  theme_bw()
-
-
-ggplot() +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj4$report()$catch_predictions),
-            color = 'red') +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj4$report()$biomass_predictions),
-            color = 'purple') +  
-  geom_point(aes(x = 1:length(dat$Ct),
-                y = dat$Ct)) +
-  theme_bw()
-```
-# Report starts here
-
-# Foreword
-
-# Data description and context
-
-## Catch $C_t$
-
-Catch is obtained via reported landings. It can converted to number of individuals via a mean body weight model (not described here), which is prefered in models such as generalized depletion models (GDMs).
-
-For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
-
-## Effort $E_t$
-
-Since we are dealing with a polyvalent fishery that employs a wide range of fishing gears and operates in vessels that are small enough to be exempt from keeping logbooks, effort data can be estimated at best by attempting to count fishing days in each month. Outliers in this series were dealt with as described earlier.
-
-```{r}
-df_effort %>% 
-  ggplot() + 
-  geom_line(aes(x = 1:348,
-                y =effort_otb)) + 
-  theme_bw() + 
-  labs(title = 'Effort (fishing days)')
-```
-
-## Catch - Effort Dynamics  
-
-```{r}
-df_effort %>% 
-  ggplot() + 
-  geom_point(aes(x = effort_otb,
-                y = catch_otb)) + 
-  theme_bw() + 
-  labs(title = 'Catch ~ Effort')
-```
-
-```{r}
-
-modelo = lm(df_effort$catch_otb/df_effort$effort_otb ~ df_effort$effort_otb)
-
-a = modelo$coefficients[["df_effort$effort_otb"]]
-b = modelo$coefficients[['(Intercept)']]
-
-df_effort %>% 
-ggplot() + 
-  geom_point(aes(x = effort_otb,
-                 y = catch_otb/effort_otb)) + 
-  geom_abline(slope = a, intercept = b, color = 'red') + 
-  theme_bw()
-
-novo = df_effort %>% 
-  mutate(
-  cpue_hat = predict(modelo, newdata = df_effort),
-                  Y = cpue_hat * df_effort$effort_otb)
-
-novo %>% 
-  ggplot() +
-  geom_point(aes(x = effort_otb,
-                 y = catch_otb), col = 'red') + 
-  geom_point(aes(x = effort_otb,
-                 y = Y)) + theme_bw()
-
-```
-
-
-## Precipitation $P_t$
-
-Just total rainfall in Algarve throught the series period. Unlike the other data, it has an yearly time step. This was done deliberatly, to accommodate the challenge of integrating data with mismatching time steps, something that occurs far too often.
-
-```{r}
-  ggplot() + 
-  geom_line(aes(x = anos,
-                y = precip)) + 
-  theme_bw() + 
-  labs(title = 'Yearly precipitation')
-```
-
-## Mean body weight
-
-Mean body weight model used to convert catch in weight to numbers. Based on samples collected at auction markets.
-
-```{r}
-df_effort %>% 
-  ggplot() +
-  # geom_line(aes(x = week,
-  #               y = mbw,
-  #               group = year_sale)) +
-  geom_line(aes(x = month_sale,
-                y = mbw_rand,
-                group = year_sale,
-                color = year_sale)) + 
-  # scale_color_manual(values = cores2) +
-  # facet_wrap(year_sale ~.) + 
-  theme_bw() + 
-  theme(legend.position = 'none') +
-  labs(y = 'mean body weight (kg)')
-```
-
-# First act: I flunked my time series course twice
-
-Mention on how some correlation was observed
-
-## Model 1: Baseline
-
-In this model we estimate $phi$ and $C_{0}$ (which the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation).
-
-$$
-C_{t+1} = \phi \cdot C_t  + \epsilon_t
-$$
-```{r}
-#| eval: true
-dat = list()
-
-dat$y = as.vector(df_effort$catch_otb)  # catches
-
-# initialize parameter list with initial estimates
-par = list()
-par$phi = 1 #ideally, should be bound between [-1,1]
-par$logsdY = 1 # We must ensure positive numbers, so we work with logs
-par$y0 = mean(dat$y)
-
-# initialize joint negative loglikelihood function
-jnll = function(par){
-  getAll(par, dat) # invoke all the parameters and data
-  
-  # gather and cleanup pars
-  y = OBS(y)
-  # fix the transformation, for the estimation
-  sdY = exp(logsdY)
-  
-  # assemble model    
-  jnll = 0 # init jnll
-  ## from alpha
-  # jnll = jnll - dnorm(alpha, 1, log = TRUE)
-  ## from phi
-  # jnll = jnll - dnorm(phi, 1, log = TRUE)
-  ## from y0
-  # jnll = jnll - dnorm(y0, 1, log = TRUE)
-  
-  ## From the observation process
-  predictions = c()
-  for(i in 1:length(y)){
-    if(i == 1) {predY = phi*y0}
-    else{predY = phi*y[i-1]}
-    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
-    predictions[i] = predY
-  }
-  REPORT(predictions)
-  jnll
-}
-
-# quick test: do we get a number? This number should be a likelihood.
-jnll(par)
-
-obj = MakeADFun(jnll, par)
-fit = nlminb(obj$par, obj$fn, obj$gr)
-
-sdr = sdreport(obj)
-pl = as.list(sdr,"Est")
-plsd = as.list(sdr,"Std")
-ggplot() + 
-  geom_point(aes(x = 1:length(dat$y),
-                 y = dat$y),
-            col = 'red') +
-  geom_line(aes(x = 1:length(dat$y),
-                y = obj$report()$predictions)) + 
-  theme_bw()
-```
-
-## Model 2: With Precipitation
-
-# Second act: I did come to a SEM course, after all
-
-## Model 1: True catch as a latent variable
-
-Following up on the previous idea, the instructors proposed the notion of the true catch being a latent variable whose process equation could be described by an **AR(p)** time series, and the observed catch $C_t$ as a result of the failure to realize or observe the maximum potential catch.
-
-$$
-\begin{cases}
-  Process: X_t = \phi X_{t-1} + \epsilon_t \\
-  Observation: C_t = \alpha X_t + \dots
-\end{cases}
-$$
-
-## Model 2: The Schaefer Surplus Production Model
-
 ## Model 3: A Surplus Production Model with the catch included as an autorregressive term
 
-This variation was proposed by the instructors with the explicit goal of limiting the impact of the catch in the existing biomass. $C_t$ is
-shifted from an additive term to a multiplicative one, with the addition of a scaling coefficient $\alpha$, to keep its impact grounded between 0 and 1.
-
+This variation was proposed by the instructors with the explicit goal of limiting the impact of the catch in the existing biomass. $C_t$ is shifted from an additive term to a multiplicative one, with the addition of a scaling coefficient $\alpha$, to keep its impact grounded between 0 and 1.
 
 $$
 B_{t+1} = B_t +r \cdot B_t \left(1 -\frac{B_t}{K} \right) \cdot \alpha C_t + \epsilon_t
@@ -742,7 +740,7 @@ As described before, we require an index vector that is correctly specified. The
 
 # Addendum: Some notes on RTMB running procedures:
 
-* Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
+-   Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
 
 ```{r}
 #| eval: false
@@ -750,7 +748,7 @@ As described before, we require an index vector that is correctly specified. The
 par$some_p = 0
 ```
 
-* In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for *some_p*, 
+-   In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for *some_p*,
 
 ```{r}
 #| eval: false
@@ -773,10 +771,8 @@ jnll = function(par){
   }
 ```
 
-* Include deviation parameters
+-   Include deviation parameters
 
-* Impose bounds like log and logit
+-   Impose bounds like log and logit
 
-* Do simulations like Anders
-
-
+-   Do simulations like Anders
