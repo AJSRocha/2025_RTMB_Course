@@ -13,6 +13,7 @@ editor: visual
 # install.packages('TMB', type = 'source', lib = .libPaths()[2]) 
 library('RTMB', lib.loc = .libPaths()[1])
 library('tidyverse')
+library(xtable)
 library(CatDyn)
 library(tmbstan)
 library(shinystan)
@@ -42,12 +43,16 @@ mod_aux = lm(df_effort$catch ~ df_effort$effort)
 
 df_effort = 
   df_effort %>% 
-  mutate(catch = case_when(year_sale == 2005 & month_sale == '09' ~ 
-                              effort * mod_aux$coefficients[2] +  mod_aux$coefficients[1],
-         T ~ catch),
-         catch_otb = case_when(year_sale == 2005 & month_sale == '09' ~ 
-                                  effort_otb * mod_aux$coefficients[2] + mod_aux$coefficients[1],
-                            T ~ catch_otb)) %>% 
+  mutate(catch = case_when(year_sale == 2005 &
+                             month_sale == '09' ~
+                             effort * mod_aux$coefficients[2] +
+                             mod_aux$coefficients[1],
+                           T ~ catch),
+         catch_otb = case_when(year_sale == 2005 &
+                                 month_sale == '09' ~
+                                 effort_otb * mod_aux$coefficients[2] +
+                                 mod_aux$coefficients[1],
+                               T ~ catch_otb)) %>% 
   mutate(catch_otb = case_when(catch_otb == 0 ~ mean(catch_otb), 
                                T ~ catch_otb),
          effort_otb = case_when(effort_otb  < 150 ~ mean(effort_otb),
@@ -55,154 +60,10 @@ df_effort =
 
 ```
 
-# Defining the model
-
-We have a biomass time series that is unobservable and therefore, latent. We can use our measurements for Capture and Effort at month $t$ ($C_t$ and $E_t$). Our challenge will come from incorporating the precipitation from the previous year, $P_{t-1}$
-
-## Second model: Added precipitation
-
-
-
-## Third model: Now with hard priors
-
-We account for uncertainty in $\phi$, $\alpha$ and $\sigma_{t}$, so we include distribution parameters for these quantities to be estimated.
-
-```{r}
-#| eval: true
-dat = list()
-
-# DO NOT USE DATA FRAMES!
-# P_{t-1} = lagP
-
-dat$y = as.vector(df_effort$catch_otb)  # catches
-dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
-
-dat$y
-
-# initialize parameter list with initial estimates
-par = list()
-par$logSdY = 1 # We must ensure positive numbers, so we work with logs
-par$phi = 1
-par$alpha = 1
-par$y0 = mean(dat$y)
-
-# if we treat phi and alpha as priors, then we must specify the distribution
-# therefore we would need to add dispersion parameters
-# If we fail to do so, a flat uniform distribution is defaulted to 
-par$logsdphi = 0
-par$logsdalpha = 0
-par$logsdy0 = 0
-# First pass: Linear model, lol
-
-# initialize joint negative loglikelihood function
-jnll = function(par){
-  getAll(par, dat) # invoke all the parameters and data
-  
-  # gather and cleanup pars
-  y = OBS(y)
-  sdY = exp(logSdY)
-  sdalpha = exp(logsdalpha)
-  sdphi = exp(logsdphi) # will be used by dnorm below
-  sdy0 = exp(logsdy0)
-  
-  # assemble model    
-  jnll = 0 # init jnll
-  ## from alpha
-  jnll = jnll - dnorm(alpha, sdalpha, log = TRUE)
-  ## from phi
-  jnll = jnll - dnorm(phi, sdphi, log = TRUE)
-  ## from y0
-  jnll = jnll - dnorm(y0, sdy0, log = TRUE)
-  
-  ## From the observation process
-  predictions = c()
-  for(i in 1:length(x)){
-    if(i == 1) {predY = phi*y0 + alpha*x[i]}
-    else{predY = phi*y[i-1]+ alpha*x[i]}
-    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
-    predictions[i] = predY
-  }
-  REPORT(predictions)
-  jnll
-}
-
-# quick test: do we get a number? This number should be a likelihood.
-jnll(par)
-
-obj3 = MakeADFun(jnll, par)
-fit3 = nlminb(obj3$par, obj3$fn, obj3$gr)
-
-sdr3 = sdreport(obj3)
-pl3 = as.list(sdr3,"Est")
-plsd3 = as.list(sdr3,"Std")
-
-sdr3
-```
-
-```{r}
-#| eval: false
-#| # library(tmbstan)
-fit2 = tmbstan(obj,chains=1,iter=1000)
-# library(shinystan)
-launch_shinystan(fit2)
-```
-
-### Prediction plots (generated from the deterministic part of the jnll function)
-
-```{r}
-  df_effort %>% 
-  ggplot() + 
-  geom_line(aes(y = dat$y,
-                x = 1:348)) +
-    geom_line(aes(x = 1:348,
-                y = obj2$report()$predictions),
-            col = 'red') +
-  geom_line(aes(x = 1:348,
-                y = obj$report()$predictions),
-            col = 'green') +
-  theme_bw() + 
-  labs(title = 'With (green) and without (red) precipitation')
-```
-
-### Prediction plots from generated data via the parameters
-
-```{r}
-yhat = c()
-for(i in 1:length(dat$y)){
-  if(i == 1){yhat[i] = par$y0}
-  else{yhat[i] = yhat[i-1]*sdr2$par.fixed[['phi']] +
-    sdr2$par.fixed[['alpha']]*dat$x[i] +
-    rnorm(1,0,exp(sdr2$par.fixed[['logSdY']]))}
-}
-
-yhat_no_p = c()
-for(i in 1:length(dat$y)){
-  if(i == 1){yhat_no_p[i] = par$y0}
-  else{yhat_no_p[i] = yhat_no_p[i-1]*sdr2$par.fixed[['phi']]+
-    rnorm(1,0,exp(sdr2$par.fixed[['logSdY']]))}
-}
-
-df_effort %>% 
-  ggplot() + 
-  geom_line(aes(y = dat$y,
-                x = 1:348)) +
-  geom_line(aes(y = yhat,
-                x = 1:348),
-            col = 'green') +
-  geom_line(aes(x = 1:348,
-                y = yhat_no_p),
-            col = 'red') +
-  theme_bw() + 
-  labs(title = 'Simulated data with (green) and without (red) precipitation')
-```
-
-
-
-
-
 ### Plotting Biomass estimates
 
 ```{r}
+#| eval: false
 ggplot() +
   geom_line(aes(x = 1:length(dat$Ct),
                 y = obj4$report()$catch_predictions),
@@ -237,8 +98,6 @@ ggplot() +
   theme_bw()
 ```
 
-# Report starts here
-
 # Foreword
 
 # Data description and context
@@ -248,6 +107,15 @@ ggplot() +
 Catch is obtained via reported landings. It can converted to number of individuals via a mean body weight model (not described here), which is prefered in models such as generalized depletion models (GDMs).
 
 For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
+
+```{r}
+df_effort %>% 
+  ggplot() + 
+  geom_line(aes(x = 1:348,
+                y = catch_otb/1000)) + 
+  theme_bw() + 
+  labs(title = 'nominal catches (tons)')
+```
 
 ## Effort $E_t$
 
@@ -348,13 +216,14 @@ $$
 
 ```{r}
 #| eval: true
+#| results: hide
 dat = list()
 
 dat$y = as.vector(df_effort$catch_otb)  # catches
 
 # initialize parameter list with initial estimates
 par = list()
-par$phi = 1 #ideally, should be bound between [-1,1]
+par$atanh_phi = atanh(0) #ideally, should be bound between [-1,1]
 par$logsdY = 1 # We must ensure positive numbers, so we work with logs
 par$y0 = mean(dat$y)
 
@@ -365,17 +234,12 @@ jnll = function(par){
   # gather and cleanup pars
   y = OBS(y)
   # fix the transformation, for the estimation
+  phi = tanh(atanh_phi)
   sdY = exp(logsdY)
   
   # assemble model    
   jnll = 0 # init jnll
-  ## from alpha
-  # jnll = jnll - dnorm(alpha, 1, log = TRUE)
-  ## from phi
-  # jnll = jnll - dnorm(phi, 1, log = TRUE)
-  ## from y0
-  # jnll = jnll - dnorm(y0, 1, log = TRUE)
-  
+
   ## From the observation process
   predictions = c()
   for(i in 1:length(y)){
@@ -397,13 +261,60 @@ fit = nlminb(obj$par, obj$fn, obj$gr)
 sdr = sdreport(obj)
 pl = as.list(sdr,"Est")
 plsd = as.list(sdr,"Std")
+```
+
+```{r}
+#| output: asis
+summary(sdr) %>% as.data.frame() %>% xtable %>% print(comment = F)
+```
+
+We can calculate the AIC and wAIC: these values are mighty suspicious
+
+```{r}
+# Calculate AIC
+logLik_value = -fit$objective
+k = length(fit$par)
+aic_value = 2 * k - 2 * logLik_value
+
+# Calculate WAIC
+log_lik = numeric(length(dat$Y))
+
+# Vector of predicted means
+meanvec = c(pl$y0)
+  for(i in 2:length(dat$y)){
+    meanvec[i] = tanh(pl$atanh_phi)*meanvec[i-1]}
+    #meanvec[i] = tanh(pl$atanh_phi) %*% t(meanvec[i-1])} 
+
+# Revert transformation of sigma(y)  
+sdy = exp(pl$logsdY)
+
+for(i in 1:length(dat$y)){
+  log_lik[i] = dnorm(dat$y[i], meanvec[i], sdy, log=TRUE)
+}
+
+lppd = sum(log(mean(exp(log_lik))))
+p_waic = sum(var(log_lik))
+waic = -2 * (lppd - p_waic)
+```
+
+```{r}
+#| output: asis
+#| echo: false
+
+xtable(data.frame(Model = 'Model 1',
+                  AIC = aic_value, 
+                  WAIC = waic)) %>% print(comment = F)
+```
+
+```{r}
 ggplot() + 
   geom_point(aes(x = 1:length(dat$y),
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
                 y = obj$report()$predictions)) + 
-  theme_bw()
+  theme_bw() +
+  labs(title = 'data (points) and model predictions (line)' )
 ```
 
 ## Model 2: With Precipitation
@@ -415,28 +326,17 @@ C_{t+1} = \phi \cdot C_t + \alpha\cdot P_t + \epsilon_t
 $$
 
 ```{r}
-#| eval: true
-dat = list()
-
-# DO NOT USE DATA FRAMES!
-# P_{t-1} = lagP
-
+#| results: hide
 dat$y = as.vector(df_effort$catch_otb)  # catches
 dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
 
 # initialize parameter list with initial estimates
 par = list()
-par$logSdY = 1 # We must ensure positive numbers, so we work with logs
-par$phi = 1
-par$alpha = 1
+par$atanh_phi = atanh(0) #ideally, should be bound between [-1,1]
+par$logsdY = 1 # We must ensure positive numbers, so we work with logs
 par$y0 = mean(dat$y)
 
-# if we treat phi and alpha as priors, then we must specify the distribution
-# therefore we would need to add dispersion parameters
-# If we fail to do so, a flat uniform distribution is defaulted to 
-# par$logsdphi = 0
-# par$logsdalpha = 0
-# First pass: Linear model, lol
+par$alpha = 1 
 
 # initialize joint negative loglikelihood function
 jnll = function(par){
@@ -444,24 +344,18 @@ jnll = function(par){
   
   # gather and cleanup pars
   y = OBS(y)
-  sdY = exp(logSdY)
-  # sdalpha = exp(logsdalpha) 
-  # sdphi = exp(logsdphi) # will be used by dnorm below
+  # fix the transformation, for the estimation
+  phi = tanh(atanh_phi)
+  sdY = exp(logsdY)
   
   # assemble model    
   jnll = 0 # init jnll
-  ## from alpha
-  # jnll = jnll - dnorm(alpha, 1, log = TRUE)
-  ## from phi
-  # jnll = jnll - dnorm(phi, 1, log = TRUE)
-  ## from y0
-  # jnll = jnll - dnorm(y0, 1, log = TRUE)
   
   ## From the observation process
   predictions = c()
-  for(i in 1:length(x)){
-    if(i == 1) {predY = phi*y0 + alpha*x[i]}
-    else{predY = phi*y[i-1]+ alpha*x[i]}
+  for(i in 1:length(y)){
+    if(i == 1) {predY = phi*y0 + alpha*x[1]}
+    else{predY = phi*y[i-1] + alpha*x[i]}
     jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
     predictions[i] = predY
   }
@@ -480,7 +374,191 @@ pl2 = as.list(sdr2,"Est")
 plsd2 = as.list(sdr2,"Std")
 ```
 
+```{r}
+#| output: asis
+summary(sdr2) %>% as.data.frame() %>% xtable %>% print(comment = F)
+```
+
+```{r}
+# Calculate AIC
+logLik_value2 = -fit2$objective
+k = length(fit2$par)
+aic_value2 = 2 * k - 2 * logLik_value2
+
+# Calculate WAIC
+log_lik2 = numeric(length(dat$Y))
+
+# Vector of predicted means
+meanvec2 = c(pl2$y0)
+  for(i in 2:length(dat$y)){
+    meanvec2[i] = tanh(pl2$atanh_phi)*meanvec[i-1] + pl2$alpha * dat$x[i]}
+  
+# Revert transformation of sigma(y)  
+sdy = exp(pl2$logsdY)
+
+for(i in 1:length(dat$y)){
+  log_lik2[i] = dnorm(dat$y[i], meanvec2[i], sdy, log=TRUE)
+}
+
+lppd2 = sum(log(mean(exp(log_lik2))))
+p_waic2 = sum(var(log_lik2))
+waic2 = -2 * (lppd2 - p_waic2)
+```
+
+```{r}
+#| output: asis
+#| echo: false
+
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt'),
+                  AIC = c(aic_value, aic_value2), 
+                  WAIC = c(waic, waic2))) %>% print(comment = F)
+```
+
+Black is model 1, Blue is model 2
+
+```{r}
+ggplot() + 
+  geom_point(aes(x = 1:length(dat$y),
+                 y = dat$y),
+            col = 'red') +
+    geom_line(aes(x = 1:length(dat$y),
+                y = obj$report()$predictions)) + 
+  geom_line(aes(x = 1:length(dat$y),
+                y = obj2$report()$predictions),
+            color = 'blue') + 
+  theme_bw() +
+  labs(title = 'data (points) and model predictions (line)' )
+```
+
+## Model 3: Incorporating uncertainty in the likelihood estimation
+
+```{r}
+#| results: hide
+dat$y = as.vector(df_effort$catch_otb)  # catches
+dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
+
+# initialize parameter list with initial estimates
+par = list()
+par$atanh_phi = atanh(0) #ideally, should be bound between [-1,1]
+par$logsdY = 1 # We must ensure positive numbers, so we work with logs
+par$y0 = mean(dat$y)
+
+par$logsdphi = 0
+par$logsdalpha = 0
+par$logsdy0 = 0
+
+par$alpha = 1 
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  y = OBS(y)
+  # fix the transformation, for the estimation
+  phi = tanh(atanh_phi)
+  sdY = exp(logsdY)
+  
+  sdalpha = exp(logsdalpha)
+  sdphi = exp(logsdphi)
+  sdy0 = exp(logsdy0)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  
+  jnll = jnll - dnorm(alpha, sdalpha, log = TRUE)
+  ## from phi
+  jnll = jnll - dnorm(phi, sdphi, log = TRUE)
+  ## from y0
+  jnll = jnll - dnorm(y0, sdy0, log = TRUE)
+  
+  ## From the observation process
+  predictions = c()
+  for(i in 1:length(y)){
+    if(i == 1) {predY = phi*y0 + alpha*x[1]}
+    else{predY = phi*y[i-1] + alpha*x[i]}
+    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
+    predictions[i] = predY
+  }
+  REPORT(predictions)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj3 = MakeADFun(jnll, par)
+fit3 = nlminb(obj3$par, obj3$fn, obj3$gr)
+
+sdr3 = sdreport(obj3)
+pl3 = as.list(sdr3,"Est")
+plsd3 = as.list(sdr3,"Std")
+```
+
+```{r}
+#| output: asis
+summary(sdr3) %>% as.data.frame() %>% xtable %>% print(comment = F)
+```
+
+```{r}
+# Calculate AIC
+logLik_value3 = -fit3$objective
+k = length(fit3$par)
+aic_value3 = 2 * k - 2 * logLik_value3
+
+# Calculate WAIC
+log_lik3 = numeric(length(dat$Y))
+
+# Vector of predicted means
+meanvec3 = c(pl3$y0)
+  for(i in 2:length(dat$y)){
+    meanvec3[i] = tanh(pl3$atanh_phi)*meanvec3[i-1] + pl3$alpha * dat$x[i]}
+  
+# Revert transformation of sigma(y)  
+sdy = exp(pl3$logsdY)
+
+for(i in 1:length(dat$y)){
+  log_lik3[i] = dnorm(dat$y[i], meanvec3[i], sdy, log=TRUE)
+}
+
+lppd3 = sum(log(mean(exp(log_lik3))))
+p_waic3 = sum(var(log_lik3))
+waic3 = -2 * (lppd3 - p_waic3)
+```
+
+```{r}
+#| output: asis
+#| echo: false
+
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)'),
+                  AIC = c(aic_value, aic_value2, aic_value3), 
+                  WAIC = c(waic, waic2, waic3))) %>% print(comment = F)
+```
+
+Black is model 1, Blue is model 2, Green is model 3
+
+```{r}
+ggplot() + 
+  geom_point(aes(x = 1:length(dat$y),
+                 y = dat$y),
+            col = 'red') +
+    geom_line(aes(x = 1:length(dat$y),
+                y = obj$report()$predictions)) + 
+  geom_line(aes(x = 1:length(dat$y),
+                y = obj2$report()$predictions),
+            color = 'blue') + 
+  geom_line(aes(x = 1:length(dat$y),
+                y = obj3$report()$predictions),
+            color = 'green') +
+  theme_bw() +
+  labs(title = 'data (points) and model predictions (line)' )
+```
+
 # Second act: I did come to a SEM course, after all
+
+The predictions obtained in the previous models should be considered with care. After all, they look good on paper even with the poor convergence in Model 3. Furthermore, even if the best fit was a great description of the catch dynamic, its usefulness is very limited. An AR(1) model allows for very little inference, with no viable interpretation or actionability on $\phi$. It's predictive power is also yet to be determined, since no testing was performed on unseen data.
+
+It makes sense, then, to turn our attention to space state models as an alternative, since they would allow us to incorpoate unobserved components of the fishery dynamics and estimate useful parameters for fishery management.
 
 ## Model 1: True catch as a latent variable
 
@@ -492,6 +570,60 @@ $$
   Observation: C_t = \alpha X_t + \dots
 \end{cases}
 $$
+
+```{r}
+#| results: hide
+dat$y = as.vector(df_effort$catch_otb)  # catches
+dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
+
+# initialize parameter list with initial estimates
+par = list()
+par$atanh_phi = atanh(0) #ideally, should be bound between [-1,1]
+par$logsdY = 1 # We must ensure positive numbers, so we work with logs
+par$y0 = mean(dat$y)
+
+par$alpha = 1 
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  y = OBS(y)
+  # fix the transformation, for the estimation
+  phi = tanh(atanh_phi)
+  sdY = exp(logsdY)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  
+  ## From the observation process
+  predictions = c()
+  for(i in 1:length(y)){
+    if(i == 1) {predY = phi*y0 + alpha*x[1]}
+    else{predY = phi*y[i-1] + alpha*x[i]}
+    jnll = jnll - dnorm(y[i], predY, sdY, log=TRUE)
+    predictions[i] = predY
+  }
+  REPORT(predictions)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj4 = MakeADFun(jnll, par)
+fit4 = nlminb(obj4$par, obj4$fn, obj4$gr)
+
+sdr4 = sdreport(obj4)
+pl4 = as.list(sdr4,"Est")
+plsd4 = as.list(sdr4,"Std")
+```
+
+```{r}
+#| output: asis
+summary(sdr2) %>% as.data.frame() %>% xtable %>% print(comment = F)
+```
 
 ## Model 2: The Schaefer Surplus Production Model
 
@@ -740,7 +872,7 @@ As described before, we require an index vector that is correctly specified. The
 
 # Addendum: Some notes on RTMB running procedures:
 
--   Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
+*  Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
 
 ```{r}
 #| eval: false
@@ -748,7 +880,7 @@ As described before, we require an index vector that is correctly specified. The
 par$some_p = 0
 ```
 
--   In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for *some_p*,
+*  In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for *some_p*,
 
 ```{r}
 #| eval: false
@@ -774,5 +906,91 @@ jnll = function(par){
 -   Include deviation parameters
 
 -   Impose bounds like log and logit
+
+* The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
+    
+    
+    Input the transformed value in the **parameter** section
+
+    Reverse the transformation inside the likelihood constructor function
+
+    Optimize the transformed, unconstrained parameter
+
+    Reverse the transformation
+
+Here are some useful examples:
+
+#### Log transformation: $p \in [0, + \infty]$
+
+```{r}
+#| eval: false
+
+par$log_p = log(p) 
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  (...)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  # reverse transformation
+  p = exp(log_p)
+  ## Prior distributions
+  jnll = jnll - dnorm(p, 0, 1000, log = TRUE)
+  (...)
+  }
+```
+
+   
+#### Logit transformation: $p \in [0,1]$
+
+```{r}
+#| eval: false
+
+par$logit_p = log(p/(1-p))
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  (...)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  # reverse transformation
+  p = exp(logit_p)/(1+exp(logit_p))
+  ## Prior distributions
+  jnll = jnll - dnorm(p, 0, 1000, log = TRUE)
+  (...)
+  }
+```    
+
+#### Tanh transformation: $p \in [-1,1]$
+
+```{r}
+#| eval: false
+
+par$atanh_p = atanh(p) 
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  (...)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+  # reverse transformation
+  p = tanh(p)
+  ## Prior distributions
+  jnll = jnll - dnorm(p, 0, 1000, log = TRUE)
+  (...)
+  }
+```  
 
 -   Do simulations like Anders
