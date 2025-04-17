@@ -1071,7 +1071,8 @@ jnll = function(par){
 
 ```{r}
 #| results: hide
-jit = replicate(100, nlminb(obj2$par+rnorm(length(obj2$par), sd=.25),obj2$fn,obj2$gr)$par)
+subject = obj
+jit = replicate(100, nlminb(subject$par+rnorm(length(subject$par), sd=.25),subject$fn,subject$gr)$par)
 ```
 
 ```{r}
@@ -1079,7 +1080,9 @@ jitplots = list()
 for(i in 1: dim(jit)[1]){
   
   cor = colorRampPalette(wes_palette('Zissou1'))(dim(jit)[1])[i]
-  jitplots[[i]] = 
+  # run in case of latent variables to avoid exploding the grOb
+  if(dim(jit)[1] > 348 & i <= 348){next}
+  jitplots[[length(jitplots)+1]] = 
     ggplot(data = data.frame(y = jit[i,])) + 
     geom_boxplot(aes(y=y), color = cor) + 
     labs(title = row.names(jit)[i],
