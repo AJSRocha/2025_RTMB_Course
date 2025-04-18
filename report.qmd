@@ -22,14 +22,14 @@ library(shinystan)
 
 load("data/df_effort_m_mbw_otb.Rdata")
 # sample data for testing purposes
-iotc = read.csv('data/IOTC-DATASETS-2025-03-13-CELongline.csv')
+# iotc = read.csv('data/IOTC-DATASETS-2025-03-13-CELongline.csv')
 
-iotc =
-iotc %>% filter(Fleet == 'JPN    ') %>%
-  filter(!is.na(YFT.NO)) %>% 
-  group_by(Year, MonthStart) %>% 
-  summarise(Effort = sum(Effort, na.rm =T),
-            Catch = sum(YFT.NO, na.rm = T ) *0.01955034)
+# iotc =
+# iotc %>% filter(Fleet == 'JPN    ') %>%
+#   filter(!is.na(YFT.NO)) %>% 
+#   group_by(Year, MonthStart) %>% 
+#   summarise(Effort = sum(Effort, na.rm =T),
+#             Catch = sum(YFT.NO, na.rm = T ) *0.01955034)
 
 precip = c(-16.67,
            115.33, 245.93, 193.93, -229.47,-76.47,
@@ -111,6 +111,7 @@ Catch is obtained via reported landings. It can converted to number of individua
 For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
 
 ```{r}
+#| echo: false
 df_effort %>% 
   ggplot() + 
   geom_line(aes(x = 1:348,
@@ -124,6 +125,7 @@ df_effort %>%
 Since we are dealing with a polyvalent fishery that employs a wide range of fishing gears and operates in vessels that are small enough to be exempt from keeping logbooks, effort data can be estimated at best by attempting to count fishing days in each month. Outliers in this series were dealt with as described earlier.
 
 ```{r}
+#| echo: false
 df_effort %>% 
   ggplot() + 
   geom_line(aes(x = 1:348,
@@ -135,6 +137,7 @@ df_effort %>%
 ## Catch - Effort Dynamics
 
 ```{r}
+#| echo: false
 df_effort %>% 
   ggplot() + 
   geom_point(aes(x = effort_otb,
@@ -144,7 +147,7 @@ df_effort %>%
 ```
 
 ```{r}
-
+#| echo: false
 modelo = lm(df_effort$catch_otb/df_effort$effort_otb ~ df_effort$effort_otb)
 
 a = modelo$coefficients[["df_effort$effort_otb"]]
@@ -173,9 +176,10 @@ novo %>%
 
 ## Precipitation $P_t$
 
-Just total rainfall in Algarve throught the series period. Unlike the other data, it has an yearly time step. This was done deliberatly, to accommodate the challenge of integrating data with mismatching time steps, something that occurs far too often.
+Just total rainfall in Algarve throughout the series period. Unlike the other data, it has an yearly time step. This was done deliberately, to accommodate the challenge of integrating data with mismatching time steps, something that occurs far too often.
 
 ```{r}
+#| echo: false
   ggplot() + 
   geom_line(aes(x = anos,
                 y = precip)) + 
@@ -188,6 +192,7 @@ Just total rainfall in Algarve throught the series period. Unlike the other data
 Mean body weight model used to convert catch in weight to numbers. Based on samples collected at auction markets.
 
 ```{r}
+#| echo: false
 df_effort %>% 
   ggplot() +
   # geom_line(aes(x = week,
@@ -267,8 +272,12 @@ plsd = as.list(sdr,"Std")
 
 ```{r}
 #| output: asis
-summary(sdr) %>% as.data.frame() %>% xtable %>% print(comment = F,
-                                                      sanitize.text.function = function(x) {x})
+summary(sdr) %>% 
+  as.data.frame() %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
 ```
 
 We can calculate the AIC and wAIC: these values are mighty suspicious
@@ -302,12 +311,14 @@ waic = -2 * (lppd - p_waic)
 
 ```{r}
 #| output: asis
-#| echo: false
+#| echo: true
 
 xtable(data.frame(Model = 'AR(1)',
                   AIC = aic_value, 
-                  WAIC = waic)) %>% print(comment = F,
-                                          sanitize.text.function = function(x) {x})
+                  WAIC = waic)) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
 ```
 
 ```{r}
@@ -380,8 +391,12 @@ plsd2 = as.list(sdr2,"Std")
 
 ```{r}
 #| output: asis
-summary(sdr2) %>% as.data.frame() %>% xtable %>% print(comment = F,
-                                                       sanitize.text.function = function(x) {x})
+summary(sdr2) %>% 
+  as.data.frame() %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
 ```
 
 ```{r}
@@ -412,12 +427,14 @@ waic2 = -2 * (lppd2 - p_waic2)
 
 ```{r}
 #| output: asis
-#| echo: false
+#| echo: true
 
 xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt'),
                   AIC = c(aic_value, aic_value2), 
-                  WAIC = c(waic, waic2))) %>% print(comment = F,
-                                                    sanitize.text.function = function(x) {x})
+                  WAIC = c(waic, waic2))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
 ```
 
 Black is model 1, Blue is model 2
@@ -436,7 +453,20 @@ ggplot() +
   labs(title = 'data (points) and model predictions (line)' )
 ```
 
-## Model 1.3: Incorporating uncertainty in the likelihood estimation
+## Model 1.3: A explicitly Bayesian approach to the estimation of the previous model
+
+Since we are not defining priors, parameters are assumed to follow a uniform distribution before the estimation process. We can see if the model is improved by specifying the priors. As detailed in the addendum to this report, they are inserted as constants:
+
+\begin{equation}
+    \begin{aligned}
+& \alpha \sim N(1,0.5) \\
+& atanh(\phi) \sim N(0, 0.5) \\
+& y_0 \sim N(200000,10000) \\
+& \sigma_y \sim N(1,1)
+    \end{aligned}
+\end{equation}
+
+
 
 ```{r}
 #| results: hide
@@ -445,15 +475,22 @@ dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
 
 # initialize parameter list with initial estimates
 par = list()
+
 par$atanh_phi = atanh(0) #ideally, should be bound between [-1,1]
+prior_mean_phi = 0
+prior_sd_phi = 0.5
+
 par$logsdY = 1 # We must ensure positive numbers, so we work with logs
+prior_mean_logsdy = 1
+prior_sd_logsdy = 1
+
 par$y0 = mean(dat$y)
+prior_mean_y0 = 200000
+prior_sd_y0 = 10000 
 
-par$logsdphi = 0
-par$logsdalpha = 0
-par$logsdy0 = 0
-
-par$alpha = 1 
+par$alpha = 1
+prior_mean_alpha = 1
+prior_sd_alpha = 0.5
 
 # initialize joint negative loglikelihood function
 jnll = function(par){
@@ -465,18 +502,23 @@ jnll = function(par){
   phi = tanh(atanh_phi)
   sdY = exp(logsdY)
   
-  sdalpha = exp(logsdalpha)
-  sdphi = exp(logsdphi)
-  sdy0 = exp(logsdy0)
-  
   # assemble model    
   jnll = 0 # init jnll
-  
-  jnll = jnll - dnorm(alpha, sdalpha, log = TRUE)
+  ## from alpha
+  jnll = jnll - dnorm(alpha,
+                      prior_mean_alpha,
+                      prior_sd_alpha, 
+                      log = TRUE)
   ## from phi
-  jnll = jnll - dnorm(phi, sdphi, log = TRUE)
+  jnll = jnll - dnorm(phi,
+                      prior_mean_phi,
+                      prior_sd_phi, 
+                      log = TRUE)
   ## from y0
-  jnll = jnll - dnorm(y0, sdy0, log = TRUE)
+  jnll = jnll - dnorm(y0,
+                      prior_mean_y0,
+                      prior_sd_y0,
+                      log = TRUE)
   
   ## From the observation process
   predictions = c()
@@ -503,8 +545,12 @@ plsd3 = as.list(sdr3,"Std")
 
 ```{r}
 #| output: asis
-summary(sdr3) %>% as.data.frame() %>% xtable %>% print(comment = F,
-                                                       sanitize.text.function = function(x) {x})
+summary(sdr3) %>% 
+  as.data.frame() %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
 ```
 
 ```{r}
@@ -535,12 +581,15 @@ waic3 = -2 * (lppd3 - p_waic3)
 
 ```{r}
 #| output: asis
-#| echo: false
+#| echo: true
 
-xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)'),
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt',
+                            'AR(1) + Pt (ii)'),
                   AIC = c(aic_value, aic_value2, aic_value3), 
-                  WAIC = c(waic, waic2, waic3))) %>% print(comment = F,
-                                                           sanitize.text.function = function(x) {x})
+                  WAIC = c(waic, waic2, waic3))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
 ```
 
 Black is model 1.1, Blue is model 1.2, Green is model 1.3
@@ -562,6 +611,112 @@ ggplot() +
   labs(title = 'data (points) and model predictions (line)' )
 ```
 
+We can take this model a step further by taking a closer look at the posteriors:
+
+```{r}
+#| results: hide
+mcmc3 = tmbstan(obj3,chains=1,iter=1000)
+temp =
+mcmc3 %>% 
+  summary()
+```
+
+This output is too wide to be rendered, this needs to be fixed
+
+```{r}
+#| eval: false
+#| output: asis
+temp$summary %>% 
+  as.data.frame() %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
+```
+
+We can compare the priors and posteriors:
+
+```{r}
+#| echo: false
+  cores = c('Prior' = wes_palette('Zissou1')[1],
+            'Posterior' = wes_palette('Zissou1')[4])
+grid.arrange(
+
+  #y0: prior = N(par$y0, 10000)
+  ggplot(data.frame(x=c(100000, 300000)), aes(x)) +
+     stat_function(fun= function(x) dnorm(x,
+                                          mean = obj3$par['y0'],
+                                          sd = 10000),
+                   aes(colour="Prior"),
+                   linewidth = 1, linetype = 1) +
+    stat_function(fun= function(x) dnorm(x,
+                                         mean = temp$summary['y0','mean'],
+                                         sd = temp$summary['y0','sd']),
+                  aes(colour="Posterior"),
+                  linewidth = 1, linetype = 2) + 
+    theme_bw() + 
+    theme(legend.position = 'bottom') + 
+    labs(colour = '') + 
+    scale_color_manual(values = cores),
+  
+    #alpha: prior = N(1, 0.5)
+  ggplot(data.frame(x=c(-1, 3)), aes(x)) +
+     stat_function(fun= function(x) dnorm(x ,mean = 1, sd = 0.5),
+                   aes(colour="Prior"),
+                   linewidth =1, linetype = 1) +
+    stat_function(fun= function(x) dnorm(x,
+                                         mean = temp$summary['alpha','mean'],
+                                         sd = temp$summary['alpha','sd']),
+                  aes(colour="Posterior"),
+                  linewidth =1, linetype = 2) + 
+    theme_bw() +
+    theme(legend.position = 'bottom') + 
+    labs(colour = '') + 
+    scale_color_manual(values = cores),
+  
+      #phi: prior = N(0, 0.5)
+  ggplot(data.frame(x=c(-1, 3)), aes(x)) +
+     stat_function(fun= function(x) dnorm(x ,mean = 0, sd = 0.5),
+                   aes(colour="Prior"),
+                   linewidth = 1, linetype = 1) +
+    stat_function(fun= function(x) dnorm(x,
+                                         mean = temp$summary['atanh_phi','mean'],
+                                         sd = temp$summary['atanh_phi','sd']),
+                  aes(colour="Posterior"),
+                  linewidth = 1, linetype = 2) + 
+    theme_bw() +
+    theme(legend.position = 'bottom') + 
+    labs(colour = '') + 
+    scale_color_manual(values = cores),
+  
+  
+      #logsdy: prior = N(1, 1)
+  ggplot(data.frame(x=c(-5, 20)), aes(x)) +
+     stat_function(fun= function(x) dnorm(x ,mean = 1, sd = 1),
+                   aes(colour="Prior"),
+                   linewidth = 1, linetype = 1) +
+    stat_function(fun= function(x) dnorm(x,
+                                         mean = temp$summary['logsdY','mean'],
+                                         sd = temp$summary['logsdY','sd']),
+                  aes(colour="Posterior"),
+                  linewidth = 1, linetype = 2) + 
+    theme_bw() + 
+    theme(legend.position = 'bottom') + 
+    labs(colour = '') + 
+    scale_color_manual(values = cores),
+  
+  ncol=2)
+```
+
+
+In an interactive session, shinystan would also have been an option:
+
+```{r}
+#| eval: false
+# library(shinystan)
+launch_shinystan(mcmc3)
+```
+
 # Second act: I did come to a SEM course, after all
 
 The predictions obtained in the previous models should be considered with care. After all, they look good on paper even with the poor convergence in Model 3. Furthermore, even if the best fit was a great description of the catch dynamic, its usefulness is very limited. An AR(1) model allows for very little inference, with no viable interpretation or actionability on $\phi$. It's predictive power is also yet to be determined, since no testing was performed on unseen data.
@@ -570,7 +725,7 @@ It makes sense, then, to turn our attention to space state models as an alternat
 
 ## Model 2.1: True catch as a latent variable
 
-Following up on the previous idea, the instructors proposed the notion of the true catch being a latent variable whose process equation could be described by an **AR(p)** time series, and the observed catch $C_t$ as a result of the failure to realize or observe the maximum potential catch. 
+Following up on the previous idea, the instructors proposed the notion of the true catch being a latent variable whose process equation could be described by an **AR(p)** time series, and the observed catch $C_t$ as a result of the failure to realize or observe the maximum potential catch.
 
 $$
 \begin{cases}
@@ -581,11 +736,9 @@ $$
 
 Taking some cues from a model we will discuss later, such a model could follow the formulation:
 
-
 $$
 X_t = C_t^ \alpha \cdot E_t ^\beta + \epsilon_t
 $$
-
 
 ```{r}
 #| results: hide
@@ -638,9 +791,13 @@ plsd4 = as.list(sdr4,"Std")
 
 ```{r}
 #| output: asis
-summary(sdr4) %>% as.data.frame() %>% slice(-c(1:348)) %>% 
-  xtable %>% print(comment = F,
-                   sanitize.text.function = function(x) {x})
+summary(sdr4) %>% 
+  as.data.frame() %>% 
+  slice(-c(1:348)) %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
 ```
 
 ```{r}
@@ -671,12 +828,14 @@ waic4 = -2 * (lppd4 - p_waic4)
 
 ```{r}
 #| output: asis
-#| echo: false
+#| echo: true
 
 xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)', ' $X_t = f(C_t)$'),
                   AIC = c(aic_value, aic_value2, aic_value3, aic_value4), 
-                  WAIC = c(waic, waic2, waic3, waic4))) %>% print(comment = F,
-                                                                  sanitize.text.function = function(x) {x})
+                  WAIC = c(waic, waic2, waic3, waic4))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
 ```
 
 Black is model 1, Blue is model 2, Green is model 3
@@ -700,8 +859,6 @@ ggplot() +
   theme_bw() +
    labs(title = 'data (points) and model predictions (line)' )
 ```
-
-
 
 ## Model 2.2: The Schaefer Surplus Production Model
 
@@ -946,20 +1103,29 @@ As described before, we require an index vector that is correctly specified. The
 
 # Addendum: Some notes on RTMB running procedures:
 
-*  Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
+-   Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
 
 ```{r}
 #| eval: false
 
-par$some_p = 0
+par$p = 0
 ```
 
-*  In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for *some_p*,
+-   In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for $p$:
+
+$$
+p \sim N(\mu_p, \sigma_p)
+$$
+these priors are incorporated in the likelihood constructor function as **constants**, not *parameters to be estimated*:
 
 ```{r}
 #| eval: false
 
-par$some_p = 0
+par$p = 0
+
+# these are priors, not parameters, so we write them like this:
+prior_mean_p = 0
+prior_sigma_p = 10
 
 # initialize joint negative loglikelihood function
 jnll = function(par){
@@ -972,7 +1138,7 @@ jnll = function(par){
   jnll = 0 # init jnll
   
   ## Prior distributions
-  jnll = jnll - dnorm(some_p, 0, 1000, log = TRUE)
+  jnll = jnll - dnorm(p, prior_mean_p, prior_sd_p, log = TRUE)
   (...)
   }
 ```
@@ -981,9 +1147,8 @@ jnll = function(par){
 
 -   Impose bounds like log and logit
 
-* The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
-    
-    
+-   The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
+
     Input the transformed value in the **parameter** section
 
     Reverse the transformation inside the likelihood constructor function
@@ -1018,7 +1183,6 @@ jnll = function(par){
   }
 ```
 
-   
 #### Logit transformation: $p \in [0,1]$
 
 ```{r}
@@ -1041,7 +1205,7 @@ jnll = function(par){
   jnll = jnll - dnorm(p, 0, 1000, log = TRUE)
   (...)
   }
-```    
+```
 
 #### Tanh transformation: $p \in [-1,1]$
 
@@ -1065,14 +1229,16 @@ jnll = function(par){
   jnll = jnll - dnorm(p, 0, 1000, log = TRUE)
   (...)
   }
-```  
+```
 
-* A procedure to test the robustness of the model (as sugested by Anders Nielsen)
+-   A procedure to test the robustness of the model (as sugested by Anders Nielsen)
 
 ```{r}
 #| results: hide
 subject = obj
-jit = replicate(100, nlminb(subject$par+rnorm(length(subject$par), sd=.25),subject$fn,subject$gr)$par)
+jit = replicate(100, 
+                nlminb(subject$par+rnorm(length(subject$par),
+                                         sd=.25),subject$fn,subject$gr)$par)
 ```
 
 ```{r}
@@ -1095,5 +1261,3 @@ grid.arrange(grobs = jitplots, nrow = 1)
 
 apply(jit-fit$par,1,range)
 ```
-
-
