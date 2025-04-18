@@ -611,6 +611,8 @@ ggplot() +
   labs(title = 'data (points) and model predictions (line)' )
 ```
 
+### Posterior analysis
+
 We can take this model a step further by taking a closer look at the posteriors:
 
 ```{r}
@@ -638,6 +640,10 @@ We can compare the priors and posteriors:
 
 ```{r}
 #| echo: false
+#| fig-cap: "Prior (Blue) and posterior (yellow) distributions."
+#| fig-height: 7
+
+
   cores = c('Prior' = wes_palette('Zissou1')[1],
             'Posterior' = wes_palette('Zissou1')[4])
 grid.arrange(
@@ -645,23 +651,24 @@ grid.arrange(
   #y0: prior = N(par$y0, 10000)
   ggplot(data.frame(x=c(100000, 300000)), aes(x)) +
      stat_function(fun= function(x) dnorm(x,
-                                          mean = obj3$par['y0'],
-                                          sd = 10000),
+                                          mean = prior_mean_y0,
+                                          sd = prior_sd_y0),
                    aes(colour="Prior"),
                    linewidth = 1, linetype = 1) +
-    stat_function(fun= function(x) dnorm(x,
+    stat_function(fun= function(x)dnorm(x,
                                          mean = temp$summary['y0','mean'],
                                          sd = temp$summary['y0','sd']),
                   aes(colour="Posterior"),
                   linewidth = 1, linetype = 2) + 
     theme_bw() + 
-    theme(legend.position = 'bottom') + 
-    labs(colour = '') + 
+    theme(legend.position = 'none') + 
+    labs(colour = '', title = 'y0') + 
     scale_color_manual(values = cores),
   
     #alpha: prior = N(1, 0.5)
   ggplot(data.frame(x=c(-1, 3)), aes(x)) +
-     stat_function(fun= function(x) dnorm(x ,mean = 1, sd = 0.5),
+     stat_function(fun= function(x) dnorm(x ,mean = prior_mean_alpha,
+                                          sd = prior_sd_alpha),
                    aes(colour="Prior"),
                    linewidth =1, linetype = 1) +
     stat_function(fun= function(x) dnorm(x,
@@ -670,13 +677,14 @@ grid.arrange(
                   aes(colour="Posterior"),
                   linewidth =1, linetype = 2) + 
     theme_bw() +
-    theme(legend.position = 'bottom') + 
-    labs(colour = '') + 
+    theme(legend.position = 'none') + 
+    labs(colour = '', title = 'alpha') + 
     scale_color_manual(values = cores),
   
       #phi: prior = N(0, 0.5)
   ggplot(data.frame(x=c(-1, 3)), aes(x)) +
-     stat_function(fun= function(x) dnorm(x ,mean = 0, sd = 0.5),
+     stat_function(fun= function(x) dnorm(x ,mean = prior_mean_phi,
+                                          sd = prior_sd_phi),
                    aes(colour="Prior"),
                    linewidth = 1, linetype = 1) +
     stat_function(fun= function(x) dnorm(x,
@@ -685,14 +693,15 @@ grid.arrange(
                   aes(colour="Posterior"),
                   linewidth = 1, linetype = 2) + 
     theme_bw() +
-    theme(legend.position = 'bottom') + 
-    labs(colour = '') + 
+    theme(legend.position = 'none') + 
+    labs(colour = '', title = 'atanh(phi)') + 
     scale_color_manual(values = cores),
   
   
       #logsdy: prior = N(1, 1)
   ggplot(data.frame(x=c(-5, 20)), aes(x)) +
-     stat_function(fun= function(x) dnorm(x ,mean = 1, sd = 1),
+     stat_function(fun= function(x) dnorm(x ,mean = prior_mean_logsdy,
+                                          sd = prior_sd_logsdy),
                    aes(colour="Prior"),
                    linewidth = 1, linetype = 1) +
     stat_function(fun= function(x) dnorm(x,
@@ -701,8 +710,8 @@ grid.arrange(
                   aes(colour="Posterior"),
                   linewidth = 1, linetype = 2) + 
     theme_bw() + 
-    theme(legend.position = 'bottom') + 
-    labs(colour = '') + 
+    theme(legend.position = 'none') + 
+    labs(colour = '', title = 'log(sd_y)') + 
     scale_color_manual(values = cores),
   
   ncol=2)
