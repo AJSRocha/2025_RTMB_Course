@@ -483,8 +483,6 @@ Since we are not defining priors, parameters are assumed to follow a uniform dis
     \end{aligned}
 \end{equation}
 
-
-
 ```{r}
 #| results: hide
 dat$y = as.vector(df_effort$catch_otb)  # catches
@@ -767,7 +765,6 @@ grid.arrange(
   ncol=2)
 ```
 
-
 In an interactive session, shinystan would also have been an option:
 
 ```{r}
@@ -914,7 +911,7 @@ xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)', ' $X_t = f
           {gsub("_", "\\\\_", x)})
 ```
 
-For these models, we could try a different approach for the plots by extracting the latent variable estimates from the *sdr*  object where we stored the report: 
+For these models, we could try a different approach for the plots by extracting the latent variable estimates from the *sdr* object where we stored the report:
 
 TODO: predicted catch with model parameters
 
@@ -924,6 +921,20 @@ TODO: predicted catch with model parameters
 
 
 grid.arrange(
+  ggplot() + 
+  geom_line(aes(x = 1:length(dat$y),
+                y = obj4$report()$predictions),
+            color = 'red') +
+  geom_line(aes(x = 1:length(dat$y),
+                y = (summary(sdr4, "random")[,'Estimate'] ^
+                        fit4$par['beta']) *
+                       (dat$eff^fit4$par['alpha']) + 
+                  rnorm(length(dat$y),
+                               0,
+                               exp(fit4$par['logsd_C']))) ,
+            color = 'purple', linetype = 2) +
+  theme_bw() +
+  labs(title = 'data (points) and catch predictions (line)'),
 ggplot() + 
   geom_line(aes(x = 1:length(dat$y),
                 y = obj4$report()$predictions),
@@ -1202,8 +1213,7 @@ par$p = 0
 
 $$
 p \sim N(\mu_p, \sigma_p)
-$$
-these priors are incorporated in the likelihood constructor function as **constants**, not *parameters to be estimated*:
+$$ these priors are incorporated in the likelihood constructor function as **constants**, not *parameters to be estimated*:
 
 ```{r}
 #| eval: false
@@ -1230,8 +1240,7 @@ jnll = function(par){
   }
 ```
 
-
-*  The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
+-   The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
 
     Input the transformed value in the **parameter** section
 
@@ -1315,7 +1324,7 @@ jnll = function(par){
   }
 ```
 
-* One can add explicit boundaries for the parameters by adding them as named vectors to the parameter list:
+-   One can add explicit boundaries for the parameters by adding them as named vectors to the parameter list:
 
 ```{r}
 # Bounds for parameters in TMB
@@ -1324,9 +1333,7 @@ par$upper = list(r = 5, q = 10, K = 100000, B0 = par$K, logsdBt = 10, logsdCt = 
 
 ```
 
-
-
-* A procedure to test the robustness of the model (as sugested by Anders Nielsen)
+-   A procedure to test the robustness of the model (as sugested by Anders Nielsen)
 
 ```{r}
 #| results: hide
@@ -1356,6 +1363,3 @@ grid.arrange(grobs = jitplots, nrow = 1)
 
 apply(jit-fit$par,1,range)
 ```
-
-
-
