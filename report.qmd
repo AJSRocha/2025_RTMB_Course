@@ -964,7 +964,7 @@ $$
 for this to work, we need to estimate $q$, $K$, $r$, $B_0$ as well as every point for $B_t$. Fun times! At this time, we will not attempt to directly model parameter uncertainty nor the process error, because life is already too hard as it is.
 
 ```{r}
-#| eval: true
+#| results: hide
 dat = list()
 
 # DO NOT USE DATA FRAMES!
