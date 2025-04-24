@@ -1,6 +1,10 @@
 ---
 title: "Custom SEM"
-format: pdf
+format:
+   pdf:
+       include-in-header:
+           - text: |
+                \usepackage{todonotes}
 editor: visual
 ---
 
@@ -60,44 +64,6 @@ df_effort =
          effort_otb = case_when(effort_otb  < 150 ~ mean(effort_otb),
                                 T ~ effort_otb))
 
-```
-
-### Plotting Biomass estimates
-
-```{r}
-#| eval: false
-ggplot() +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj4$report()$catch_predictions),
-            color = 'red') +
-  geom_point(aes(x = 1:length(dat$Ct),
-                y = dat$Ct)) +
-  theme_bw()
-
-
-
-temp = data.frame(x = obj4$report()$biomass_predictions) %>% 
-  mutate(y = sdr4$par.fixed[['r']]*x *
-           (1-(x/sdr4$par.fixed[['K']])))
-
-ggplot() +
-  geom_point(aes(y  = temp$y,
-                x = temp$x),
-            color = 'red') +
-
-  theme_bw()
-
-
-ggplot() +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj4$report()$catch_predictions),
-            color = 'red') +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj4$report()$biomass_predictions),
-            color = 'purple') +  
-  geom_point(aes(x = 1:length(dat$Ct),
-                y = dat$Ct)) +
-  theme_bw()
 ```
 
 # Foreword
@@ -1076,6 +1042,110 @@ fit5 = nlminb(obj5$par, obj5$fn, obj5$gr)
 sdr5 = sdreport(obj5)
 pl5 = as.list(sdr5,"Est")
 plsd5 = as.list(sdr5,"Std")
+```
+
+```{r}
+#| output: asis
+summary(sdr4) %>% 
+  as.data.frame() %>% 
+  slice(-c(1:348)) %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
+```
+
+\todo[inline]{Update the meanvec and sd}
+
+```{r}
+# Calculate AIC
+logLik_value5 = -fit5$objective
+k = length(fit5$par)
+aic_value5 = 2 * k - 2 * logLik_value5
+
+# Calculate WAIC
+log_lik5 = numeric(length(dat$y))
+
+# Vector of predicted means
+meanvec5 = c()
+  for(i in 1:length(dat$Ct)){
+    meanvec5[i] = fit5$par['q'] * 
+      summary(sdr5, "random")[,'Estimate'][i] *
+      dat$Et[i] }
+  
+# Revert transformation of sigma(y)  
+sdy = exp(pl5$logsdCt)
+
+for(i in 1:length(dat$y)){
+  log_lik5[i] = dnorm(dat$Ct[i], meanvec5[i], sdy, log=TRUE)
+}
+
+lppd5 = sum(log(mean(exp(log_lik5))))
+p_waic5 = sum(var(log_lik5))
+waic5 = -2 * (lppd5 - p_waic5)
+
+```
+
+```{r}
+#| output: asis
+#| echo: true
+
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)',
+                            ' $X_t = f(C_t)$', 'SPM'),
+                  AIC = c(aic_value, aic_value2, aic_value3, aic_value4, aic_value5), 
+                  WAIC = c(waic, waic2, waic3, waic4, waic5))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
+```
+
+```{r}
+#| fig-width: 12
+#| fig-height: 12
+
+
+grid.arrange(
+  ggplot() + 
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj5$report()$catch_predictions),
+            color = 'red') +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = meanvec5 + 
+                  rnorm(length(dat$Ct),
+                               0,
+                               exp(fit5$par['logsdCt']))) ,
+            color = 'purple', linetype = 2) +
+  theme_bw() +
+  labs(title = 'data (points) and catch predictions (line)'),
+ggplot() + 
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj5$report()$catch_predictions),
+            color = 'red') +
+  theme_bw() +
+   labs(title = 'data (points) and catch predictions (line)'),
+ggplot() + 
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = summary(sdr5, "random")[,'Estimate']),
+            color = 'purple') +
+  geom_ribbon(aes(x = 1:length(dat$Ct),
+                ymax = summary(sdr5, "random")[,'Estimate'] + 
+                  2 * summary(sdr5, "random")[,'Std. Error'],
+                ymin = summary(sdr5, "random")[,'Estimate'] - 
+                  2 * summary(sdr5, "random")[,'Std. Error']),
+            fill = 'purple', linetype = 2, alpha = 0.3) +
+  theme_bw() +
+   labs(title = 'Potential catch estimates (X(t)'),
+ggplot() +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj5$report()$catch_predictions),
+            color = 'red') +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = summary(sdr5, "random")[,'Estimate']),
+            color = 'purple') +
+  theme_bw() +
+   labs(title = 'data (points) and catch predictions (line)'),
+
+  ncol=1)
 ```
 
 ## Model 2.3: A Surplus Production Model with the catch included as an autorregressive term
