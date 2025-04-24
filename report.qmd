@@ -325,12 +325,21 @@ xtable(data.frame(Model = 'AR(1)',
 #| fig-height: 4
 #| fig-width: 12
 
+pred1 = c(fit$par['y0'])
+  for(i in 2:length(dat$y)){
+    pred1[i] = tanh(fit$par['atanh_phi']) * pred1[i-1]+
+      rnorm(1, 0, exp(fit$par['logsdY']))
+  }
+
 ggplot() + 
   geom_point(aes(x = 1:length(dat$y),
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = obj$report()$predictions)) + 
+                y = obj$report()$predictions)) +
+  geom_line(aes(x = seq_along(dat$y),
+                y = pred1),
+            linetype = 2) +
   theme_bw() +
   labs(title = 'data (points) and model predictions (line)' )
 ```
