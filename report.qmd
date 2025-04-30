@@ -16,6 +16,10 @@ This particular case study is a problem that is currently being worked on by sev
 
 I must once again thank the instructors for their patience in the face of what must have come across as stubborness, lack of common sense and poor decision making. Cheers!
 
+The source for this document can be found in
+
+\url{https://github.com/AJSRocha/2025_RTMB_Course/blob/main/report.qmd}
+
 # Setup
 
 ```{r}
