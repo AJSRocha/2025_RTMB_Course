@@ -1285,6 +1285,140 @@ for(tt in 1:length(x)){
 
 As described before, we require an index vector that is correctly specified. There is no documentation on how to handle multiple pulses in the same fishing season.
 
+## Model 3.1: GDM, as seen on CatDyn
+
+```{r}
+#| results: hide
+dat = list()
+
+# DO NOT USE DATA FRAMES!
+# P_{t-1} = lagP
+
+dat$Ct = as.vector(df_effort$catch_otb/df_effort$res)  # catches
+dat$Et = as.vector(df_effort$effort_otb) # effort
+
+indice_manual_2 = 
+  list(
+    12,12,12,12, 
+    12,12,12,12,12,
+    12,10,10,11,12,
+    12,12,10,11,12,
+    11,12,10,12,11,
+    12,12,12,12,10)
+
+for(i in 0:(length(indice_manual_2)-1)){
+  indice_manual_2[[i+1]] = 12*i + indice_manual_2[[i+1]]
+}
+
+dat$u = unlist(indice_manual_2) # recruitment pulse timings
+
+# initialize parameter list with initial estimates
+par = list()
+par$Rt = as.vector(rep(20000,length(dat$u)))# init empty vector
+# par$meanBt = 100000
+
+par$logalpha = log(0.85)
+par$logbeta = log(0.85)
+par$logK = log(0.0001)
+par$logN0 = log(600000000)
+par$logM = log(0.01)
+
+# par$B0 = 0.5*par$K # % of stock depletion at time zero
+
+par$logsdCt = 1
+# par$logsdB0 = 1000
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  Ct = OBS(Ct)
+  alpha = exp(logalpha)
+  beta = exp(logbeta)
+  K = exp(logK)
+  N0 = exp(logN0)
+  M = exp(logM)
+  sdCt = exp(logsdCt)
+  
+  
+  # sdB0 = exp(logsdB0)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+ 
+  ## Prior distributions
+  ## The 1 in the mean fixes the prior distribution of r
+  # jnll = jnll - dexp(r,1, log = TRUE)
+  # jnll = jnll - dexp(q,0.1, log = TRUE)
+  # jnll = jnll - dnorm(K, 1000000, 1000, log = TRUE)
+  
+  # prior on N0
+  # jnll = jnll - dnorm(Bt[1], K/2, 1000, log = TRUE)
+  
+  ## From the observation equation
+ 
+  ## From the process equation
+  # Initial values
+ 
+  catch = c()
+  for(mes in seq_along(dat$Ct)){
+    
+    m = exp(-M/2)
+    
+    # core
+    
+    core = K*(Et[mes]^alpha) * m 
+    
+    # M-driven decay
+    
+    part1 = N0*exp(-M*mes)
+    
+    # catch aggregation
+     
+    part2 = 0
+    for(mes_ant in seq_len(length(dat$Ct)-1)){
+      part2 = part2 + Ct[mes_ant]*exp(-M*(mes-mes_ant-1))}
+    
+    # Recruitment pulses
+    
+    part3 = 0
+    for(j in seq_along(u[u<=mes])){
+      part3 = part3 + Rt[j]*exp(-M*(mes-u[j]))}
+    
+    
+    # Assemble
+    pred = core * (part1 -m*part2 + part3)^beta
+    catch[mes] = pred
+    
+    jnll = jnll - dnorm(Ct[mes], pred, sdCt, log = T)
+  
+  }
+  REPORT(catch)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj7 = MakeADFun(jnll, par)
+fit7 = nlminb(obj7$par, obj7$fn, obj7$gr)
+
+sdr7 = sdreport(obj7)
+pl7 = as.list(sdr7,"Est")
+plsd7 = as.list(sdr7,"Std")
+```
+
+```{r}
+ggplot() + 
+  geom_line(aes(x = 1:348,
+                y = dat$Ct)) + 
+  geom_line(aes(x = 1:348,
+                y = obj7$report()['catch'] %>% unlist()),
+            color = 'red') + 
+  theme_bw()
+```
+
 ## Model 2: What if it rained on Model 1
 
 # Conclusion and Final Remarks
