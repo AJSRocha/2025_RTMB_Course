@@ -109,7 +109,7 @@ df_effort %>%
 
 ## Catch - Effort Dynamics
 
-A key point in stock assessment in characterizing the dynamic between catch and effort. Typically it should be expected that after a given point catch per unit of effort starts to diminish, a phenomenom known as effort saturation. This often occurs because abundance becomes a limiting factor, and this shift in response to effort is crucial to understand the fishery. Stock assessment models often require a measure of contrast in the data, where different levels of effort and response are observed in order to characterize this relationship.
+A key point in stock assessment is characterizing the dynamic between catch and effort. Typically it should be expected that after a given point catch per unit of effort starts to diminish, a phenomenon known as effort saturation. This often occurs because abundance becomes a limiting factor, and this shift in response to effort is crucial to understand the fishery. Stock assessment models often require a measure of contrast in the data, where different levels of effort and response are observed in order to characterize this relationship.
 
 In many cases, factors such as inacuracies in the data, shifts in fishing capacity, efficiency and preference patterns or non-fishing-related changes in biomass can obscur this relationship. There is a consensus on the need of standardizing the *catch-per-unit-of-effort* (**CPUE**) indexes in order to mitigate the influence of these factors in longer time series.
 
@@ -125,7 +125,7 @@ df_effort %>%
   labs(title = 'Catch ~ Effort')
 ```
 
-Plotting the linear relationship between *CPUE* and effort in the catch-effort map should result in the typical inverted bell shape, with the peak in the middle representing the point of maximum yield-per-effort. As we can see below, that is not the case at all with our data. Either the observations only cover a small fraction of the catch-effort dynamic or the data is not a good sample of this relationship. 
+Plotting the linear relationship between *CPUE* and effort in the catch-effort map should result in the typical inverted bell shape, with the peak in the middle representing the point of maximum yield-per-effort. As we can see below, that is not the case at all with our data. Either the observations only cover a small fraction of the catch-effort dynamic or the data is not a good sample of this relationship.
 
 ```{r}
 #| echo: false
@@ -139,7 +139,8 @@ ggplot() +
   geom_point(aes(x = effort_otb,
                  y = catch_otb/effort_otb)) + 
   geom_abline(slope = a, intercept = b, color = 'red') + 
-  theme_bw()
+  theme_bw() +
+  labs(x = 'effort', y = 'CPUE')
 
 novo = df_effort %>% 
   mutate(
@@ -151,7 +152,8 @@ novo %>%
   geom_point(aes(x = effort_otb,
                  y = catch_otb), col = 'red') + 
   geom_point(aes(x = effort_otb,
-                 y = Y)) + theme_bw()
+                 y = Y)) + theme_bw() + 
+  labs(x = 'effort', y = 'catch')
 
 ```
 
@@ -165,7 +167,7 @@ Just total rainfall in Algarve throughout the series period. Unlike the other da
   geom_line(aes(x = anos,
                 y = precip)) + 
   theme_bw() + 
-  labs(title = 'Yearly precipitation')
+  labs(title = 'Yearly precipitation', x = 'year', y = 'precipitation')
 ```
 
 ## Mean body weight
@@ -187,16 +189,16 @@ df_effort %>%
   # facet_wrap(year_sale ~.) + 
   theme_bw() + 
   theme(legend.position = 'none') +
-  labs(y = 'mean body weight (kg)')
+  labs(y = 'mean body weight (kg)', x = 'month')
 ```
 
 # First act: I flunked my time series course twice
 
-Mention on how some correlation was observed
+Upon inspecting the catch series ($C_t$), the instructors quickly pointed out that it seems to be an autorregressive process. While the temporal independence of the catches could be a matter of discussion (technically they are independent observations, but they are linked by a latent process). While such models have limited applicability for our purposes, we will start by fitting an $AR(1)$ model.
 
 ## Model 1.1: Baseline
 
-In this model we estimate $\phi$ and $C_{0}$ (which the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation).
+In this model we estimate $\phi$ and $C_{0}$ (which is the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation). $\phi$
 
 $$
 C_{t+1} = \phi \cdot C_t  + \epsilon_t
@@ -261,7 +263,7 @@ summary(sdr) %>%
           {gsub("_", "\\\\_", x)})
 ```
 
-We can calculate the AIC and wAIC: these values are mighty suspicious
+We can calculate the AIC and wAIC as such:
 
 ```{r}
 # Calculate AIC
@@ -302,9 +304,12 @@ xtable(data.frame(Model = 'AR(1)',
           {gsub("_", "\\\\_", x)})
 ```
 
+We got satisfactory model convergence, so we are starting with a working model as a baseline. However, when we plot the predictions from this model we are reminded that the deterministic component in an $AR(1)$ is not sufficient to account for the variance we observe in the data. In our series, in order to match the extreme shifts in catches the estimate for $\epsilon_t$ is inflated to a degree that causes the catch predictions to get deep into negative values.
+
 ```{r}
 #| fig-height: 4
 #| fig-width: 12
+#| echo: false
 
 pred1 = c(fit$par['y0'])
   for(i in 2:length(dat$y)){
@@ -384,6 +389,8 @@ plsd2 = as.list(sdr2,"Std")
 
 ```{r}
 #| output: asis
+#| echo: false
+
 summary(sdr2) %>% 
   as.data.frame() %>% 
   xtable %>% 
@@ -420,7 +427,7 @@ waic2 = -2 * (lppd2 - p_waic2)
 
 ```{r}
 #| output: asis
-#| echo: true
+#| echo: false
 
 xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt'),
                   AIC = c(aic_value, aic_value2), 
@@ -430,11 +437,17 @@ xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt'),
           {gsub("_", "\\\\_", x)})
 ```
 
-Black is model 1, Blue is model 2
+Below we can compare both models (Black is model 1, Blue is model 2. We still have dispersion estimates for the parameters and even though the improvements in the *AIC* and *wAIC* are small, the plausibility of the estimates is considerably better.
 
 ```{r}
 #| fig-height: 8
 #| fig-width: 12
+#| echo: false
+
+pred2 = c(pl2$y0)
+for(i in 2:length(dat$y)){
+  pred2[i] = pred2[i-1]*tanh(pl2$atanh_phi) + pl2$alpha*dat$x[i] + rnorm(1,0, exp(pl2$logsdY))
+}
 
 grid.arrange(
 
@@ -443,7 +456,7 @@ ggplot() +
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = obj$report()$predictions)) + 
+                y = pred1)) + 
   theme_bw() +
   labs(title = 'data (points) and model 1.1 (line)' ),
 
@@ -452,7 +465,7 @@ ggplot() +
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = obj2$report()$predictions),
+                y =pred2),
             color = 'blue') + 
   theme_bw() +
   labs(title = 'data (points) and model 1.2 (line)' ),
@@ -550,6 +563,8 @@ plsd3 = as.list(sdr3,"Std")
 
 ```{r}
 #| output: asis
+#| echo: false
+
 summary(sdr3) %>% 
   as.data.frame() %>% 
   xtable %>% 
@@ -586,7 +601,7 @@ waic3 = -2 * (lppd3 - p_waic3)
 
 ```{r}
 #| output: asis
-#| echo: true
+#| echo: false
 
 xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt',
                             'AR(1) + Pt (ii)'),
@@ -597,11 +612,19 @@ xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt',
           {gsub("_", "\\\\_", x)})
 ```
 
-Black is model 1.1, Blue is model 1.2, Green is model 1.3
+We can see that by both metrics and predictions, specifying the priors did not result in improvements:
+
+\todo{finish here}
 
 ```{r}
 #| fig-height: 12
 #| fig-width: 12
+#| echo: false
+
+pred3 = c(pl3$y0)
+for(i in 2:length(dat$y)){
+  pred3[i] = pred3[i-1]*tanh(pl3$atanh_phi) + pl3$alpha*dat$x[i] + rnorm(1,0, exp(pl3$logsdY))
+}
 
 grid.arrange(
 
@@ -610,7 +633,7 @@ ggplot() +
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = obj$report()$predictions)) + 
+                y = pred1)) + 
   theme_bw() +
   labs(title = 'data (points) and model 1.1 (line)' ),
 
@@ -619,7 +642,7 @@ ggplot() +
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = obj2$report()$predictions),
+                y =pred2),
             color = 'blue') + 
   theme_bw() +
   labs(title = 'data (points) and model 1.2 (line)' ),
@@ -629,10 +652,10 @@ ggplot() +
                  y = dat$y),
             col = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = obj2$report()$predictions),
+                y = pred3),
             color = 'darkgreen') + 
   theme_bw() +
-  labs(title = 'data (points) and model 1.2 (line)' ),
+  labs(title = 'data (points) and model 1.3 (line)' ),
 
 ncol =1)
 ```
@@ -765,7 +788,7 @@ launch_shinystan(mcmc3)
 
 # Second act: I did come to a SEM course, after all
 
-The predictions obtained in the previous models should be considered with care. After all, they look good on paper even with the poor convergence in Model 3. Furthermore, even if the best fit was a great description of the catch dynamic, its usefulness is very limited. An AR(1) model allows for very little inference, with no viable interpretation or actionability on $\phi$. It's predictive power is also yet to be determined, since no testing was performed on unseen data.
+The predictions obtained in the previous models should be considered with care. After all, they look good on paper even with the poor convergence in Model 1.3. Furthermore, even if the best fit was a great description of the catch dynamic, its usefulness is very limited. An AR(1) model allows for very little inference, with no viable interpretation or actionability on $\phi$. It's predictive power is also yet to be determined, since no testing was performed on unseen data.
 
 It makes sense, then, to turn our attention to space state models as an alternative, since they would allow us to incorpoate unobserved components of the fishery dynamics and estimate useful parameters for fishery management.
 
@@ -1423,7 +1446,7 @@ ggplot() +
   theme_bw()
 ```
 
-## Model 2: What if it rained on Model 1
+## Model 3.2: What if it rained on Model 1
 
 # Conclusion and Final Remarks
 
@@ -1437,11 +1460,13 @@ ggplot() +
 par$p = 0
 ```
 
-####  In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for $p$:
+#### In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for $p$:
 
 $$
 p \sim N(\mu_p, \sigma_p)
-$$ these priors are incorporated in the likelihood constructor function as **constants**, not *parameters to be estimated*:
+$$
+
+these priors are incorporated in the likelihood constructor function as **constants**, not *parameters to be estimated*:
 
 ```{r}
 #| eval: false
@@ -1468,15 +1493,17 @@ jnll = function(par){
   }
 ```
 
-####  The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
+#### The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
 
-    Input the transformed value in the **parameter** section
+```         
+Input the transformed value in the **parameter** section
 
-    Reverse the transformation inside the likelihood constructor function
+Reverse the transformation inside the likelihood constructor function
 
-    Optimize the transformed, unconstrained parameter
+Optimize the transformed, unconstrained parameter
 
-    Reverse the transformation
+Reverse the transformation
+```
 
 Here are some useful examples:
 
@@ -1552,7 +1579,7 @@ jnll = function(par){
   }
 ```
 
-####  One can add explicit boundaries for the parameters by adding them as named vectors to the parameter list:
+#### One can add explicit boundaries for the parameters by adding them as named vectors to the parameter list:
 
 ```{r}
 # Bounds for parameters in TMB
