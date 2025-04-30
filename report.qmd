@@ -1,5 +1,5 @@
 ---
-title: "Custom SEM"
+title: "Report on the octopus fishery case study examined during the SEM Workshop"
 format:
    pdf:
        include-in-header:
@@ -8,11 +8,22 @@ format:
 editor: visual
 ---
 
+# Foreword
+
+The dataset that I brought to this workshop and will be using in this report consists of real data from the polyvalent fishery of octopus that is occurs in the Southern region of Algarve. Octopus, as most cephalopods, are somewhat infamous in fish stock assessment due to the fact that they are not fish and are quite problematic to assess properly due to their unique population dynamics and life cycle.
+
+This particular case study is a problem that is currently being worked on by several experts in the community and I do not expect to pull a rabbit out of this particular hat just by being introduced to SEM. I chose this dataset because I am familiar with it and any new insight will be valuable, but throughout the workshop and the work after I prioritized using it as a *guinea pig* for the tecniques and modelling approaches that were introduced throughout the workshop, even at the expense of the optimal approach or sometimes common sense. Poor decisions and wrong formulations were sometimes pursued just to ensure I learned how to implement them, foregoing progress in the dataset itself. The decision of including a yearly series of precipitation as a proxy for the incorporation of environmental data is an example of this thought process.
+
+I must once again thank the instructors for their patience in the face of what must have come across as stubborness, lack of common sense and poor decision making. Cheers!
+
 # Setup
 
 ```{r}
 #| message: false
 #| warning: false
+
+# tinytex::parse_install("report.log")
+# tinytex::tlmgr_update()
 
 # install.packages('TMB', type = 'source', lib = .libPaths()[2]) 
 library('RTMB', lib.loc = .libPaths()[1])
@@ -25,15 +36,6 @@ library(tmbstan)
 library(shinystan)
 
 load("data/df_effort_m_mbw_otb.Rdata")
-# sample data for testing purposes
-# iotc = read.csv('data/IOTC-DATASETS-2025-03-13-CELongline.csv')
-
-# iotc =
-# iotc %>% filter(Fleet == 'JPN    ') %>%
-#   filter(!is.na(YFT.NO)) %>% 
-#   group_by(Year, MonthStart) %>% 
-#   summarise(Effort = sum(Effort, na.rm =T),
-#             Catch = sum(YFT.NO, na.rm = T ) *0.01955034)
 
 precip = c(-16.67,
            115.33, 245.93, 193.93, -229.47,-76.47,
@@ -47,6 +49,7 @@ anos = 1994:2023
 
 mod_aux = lm(df_effort$catch ~ df_effort$effort)
 
+# Fix a couple of outliers
 df_effort = 
   df_effort %>% 
   mutate(catch = case_when(year_sale == 2005 &
@@ -66,13 +69,13 @@ df_effort =
 
 ```
 
-# Foreword
-
 # Data description and context
+
+In broad strokes, the octopus fishery in southern Portugal is a small scale fishery, mostly performed with passive traps, where the octopi are free to enter and leave at will. Lack of reliable effort measures and auction market dodging are just a few problems that plague data collection on this fishery. The data used in this report covers 29 years, in month time steps, for a total of 348 observations.
 
 ## Catch $C_t$
 
-Catch is obtained via reported landings. It can converted to number of individuals via a mean body weight model (not described here), which is prefered in models such as generalized depletion models (GDMs).
+Catch is obtained via reported landings. It can converted to number of individuals via a mean body weight model (fitted with spline regression, not described here), which is prefered in models such as generalized depletion models (GDMs).
 
 For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
 
@@ -102,6 +105,12 @@ df_effort %>%
 
 ## Catch - Effort Dynamics
 
+A key point in stock assessment in characterizing the dynamic between catch and effort. Typically it should be expected that after a given point catch per unit of effort starts to diminish, a phenomenom known as effort saturation. This often occurs because abundance becomes a limiting factor, and this shift in response to effort is crucial to understand the fishery. Stock assessment models often require a measure of contrast in the data, where different levels of effort and response are observed in order to characterize this relationship.
+
+In many cases, factors such as inacuracies in the data, shifts in fishing capacity, efficiency and preference patterns or non-fishing-related changes in biomass can obscur this relationship. There is a consensus on the need of standardizing the *catch-per-unit-of-effort* (**CPUE**) indexes in order to mitigate the influence of these factors in longer time series.
+
+In this particular series, the catch-effort relationship appears to be fairly linear without the expected decay and/or inverse exponential shape. This may be an indication that either the data is somewhat unrealistic or, perhaps, the fishing mortality has not been enough to cause a significant enough shift in abundance to be reflected in the *CPUE*.
+
 ```{r}
 #| echo: false
 df_effort %>% 
@@ -111,6 +120,8 @@ df_effort %>%
   theme_bw() + 
   labs(title = 'Catch ~ Effort')
 ```
+
+Plotting the linear relationship between *CPUE* and effort in the catch-effort map should result in the typical inverted bell shape, with the peak in the middle representing the point of maximum yield-per-effort. As we can see below, that is not the case at all with our data. Either the observations only cover a small fraction of the catch-effort dynamic or the data is not a good sample of this relationship. 
 
 ```{r}
 #| echo: false
@@ -155,7 +166,7 @@ Just total rainfall in Algarve throughout the series period. Unlike the other da
 
 ## Mean body weight
 
-Mean body weight model used to convert catch in weight to numbers. Based on samples collected at auction markets.
+Mean body weight model used to convert catch in weight to numbers. Based on samples collected at auction markets, the model itself was fitted through spline regression.
 
 ```{r}
 #| echo: false
@@ -181,7 +192,7 @@ Mention on how some correlation was observed
 
 ## Model 1.1: Baseline
 
-In this model we estimate $phi$ and $C_{0}$ (which the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation).
+In this model we estimate $\phi$ and $C_{0}$ (which the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation).
 
 $$
 C_{t+1} = \phi \cdot C_t  + \epsilon_t
@@ -1280,7 +1291,7 @@ As described before, we require an index vector that is correctly specified. The
 
 # Addendum: Some notes on RTMB running procedures:
 
--   Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
+#### Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
 
 ```{r}
 #| eval: false
@@ -1288,7 +1299,7 @@ As described before, we require an index vector that is correctly specified. The
 par$p = 0
 ```
 
--   In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for $p$:
+####  In order to explicitly set a prior distribution, we need to incorporate it in the likelihood estimation. Here I'm setting the prior distribution for $p$:
 
 $$
 p \sim N(\mu_p, \sigma_p)
@@ -1319,7 +1330,7 @@ jnll = function(par){
   }
 ```
 
--   The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
+####  The optimization in TMB is performed over unconstrained real numbers. It is a good practice to ensure that parameter estimates are kept within their realistic bounds by applying a transformation:
 
     Input the transformed value in the **parameter** section
 
@@ -1331,7 +1342,7 @@ jnll = function(par){
 
 Here are some useful examples:
 
-#### Log transformation: $p \in [0, + \infty]$
+##### Log transformation: $p \in [0, + \infty]$
 
 ```{r}
 #| eval: false
@@ -1355,7 +1366,7 @@ jnll = function(par){
   }
 ```
 
-#### Logit transformation: $p \in [0,1]$
+##### Logit transformation: $p \in [0,1]$
 
 ```{r}
 #| eval: false
@@ -1379,7 +1390,7 @@ jnll = function(par){
   }
 ```
 
-#### Tanh transformation: $p \in [-1,1]$
+##### Tanh transformation: $p \in [-1,1]$
 
 ```{r}
 #| eval: false
@@ -1403,7 +1414,7 @@ jnll = function(par){
   }
 ```
 
--   One can add explicit boundaries for the parameters by adding them as named vectors to the parameter list:
+####  One can add explicit boundaries for the parameters by adding them as named vectors to the parameter list:
 
 ```{r}
 # Bounds for parameters in TMB
@@ -1412,7 +1423,7 @@ par$upper = list(r = 5, q = 10, K = 100000, B0 = par$K, logsdBt = 10, logsdCt = 
 
 ```
 
--   A procedure to test the robustness of the model (as sugested by Anders Nielsen)
+#### A procedure to test the robustness of the model (as sugested by Anders Nielsen)
 
 ```{r}
 #| results: hide
