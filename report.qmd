@@ -313,8 +313,9 @@ We got satisfactory model convergence, so we are starting with a working model a
 
 pred1 = c(fit$par['y0'])
   for(i in 2:length(dat$y)){
-    pred1[i] = tanh(fit$par['atanh_phi']) * pred1[i-1]+
-      rnorm(1, 0, exp(fit$par['logsdY']))
+    pred1[i] = rnorm(1,
+                     tanh(fit$par['atanh_phi']) * pred1[i-1],
+                     exp(fit$par['logsdY']))
   }
 
 ggplot() + 
@@ -446,7 +447,9 @@ Below we can compare both models (Black is model 1, Blue is model 2. We still ha
 
 pred2 = c(pl2$y0)
 for(i in 2:length(dat$y)){
-  pred2[i] = pred2[i-1]*tanh(pl2$atanh_phi) + pl2$alpha*dat$x[i] + rnorm(1,0, exp(pl2$logsdY))
+  pred2[i] = rnorm(1,
+                   pred2[i-1]*tanh(pl2$atanh_phi) + pl2$alpha*dat$x[i],
+                   exp(pl2$logsdY))
 }
 
 grid.arrange(
@@ -614,7 +617,7 @@ xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt',
 
 We can see that by both metrics and predictions, specifying the priors did not result in improvements:
 
-\todo{finish here}
+\todo[inline]{finish here}
 
 ```{r}
 #| fig-height: 12
@@ -623,7 +626,11 @@ We can see that by both metrics and predictions, specifying the priors did not r
 
 pred3 = c(pl3$y0)
 for(i in 2:length(dat$y)){
-  pred3[i] = pred3[i-1]*tanh(pl3$atanh_phi) + pl3$alpha*dat$x[i] + rnorm(1,0, exp(pl3$logsdY))
+  pred3[i] = 
+    rnorm(
+      1,
+      pred3[i-1]*tanh(pl3$atanh_phi) + pl3$alpha*dat$x[i],
+      exp(pl3$logsdY))
 }
 
 grid.arrange(
@@ -811,6 +818,8 @@ $$
 
 ```{r}
 #| results: hide
+dat = list()
+
 dat$y = as.vector(df_effort$catch_otb)  # catches
 dat$eff = as.vector(df_effort$effort_otb) # effort
 
@@ -877,9 +886,11 @@ plsd4 = as.list(sdr4,"Std")
 
 ```{r}
 #| output: asis
+#| echo: false
+
 summary(sdr4) %>% 
   as.data.frame() %>% 
-  slice(-c(1:348)) %>% 
+  slice(-c(6:353)) %>%
   xtable %>% 
   print(comment = F,
         sanitize.text.function = function(x) 
@@ -901,7 +912,7 @@ meanvec4 = c()
     meanvec4[i] = (dat$eff[i]^pl4$alpha) * (dat$y[i] ^ pl4$beta)}
   
 # Revert transformation of sigma(y)  
-sdy = exp(pl4$logsd_X)
+sdy = exp(pl4$logsd_C)
 
 for(i in 1:length(dat$y)){
   log_lik4[i] = dnorm(dat$y[i], meanvec4[i], sdy, log=TRUE)
@@ -914,7 +925,7 @@ waic4 = -2 * (lppd4 - p_waic4)
 
 ```{r}
 #| output: asis
-#| echo: true
+#| echo: false
 
 xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)', ' $X_t = f(C_t)$'),
                   AIC = c(aic_value, aic_value2, aic_value3, aic_value4), 
@@ -924,37 +935,31 @@ xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)', ' $X_t = f
           {gsub("_", "\\\\_", x)})
 ```
 
-For these models, we could try a different approach for the plots by extracting the latent variable estimates from the *sdr* object where we stored the report:
+For these models, we could try a different approach for the plots:
 
-TODO: predicted catch with model parameters
+* Latent variable estimates (in purple) are extracted from the *sdr* object where we stored the report
+
+* Predicted catch (in red) comes from the objective function that is specified to be reported during optimization (*REPORT (predictions)*). Because they do not incorporate dispersion they are not a good prediction for the catch, but are useful to see how realistic the optimization function was. If this series is unrealistic it is a symptom of an error in the objective function.
+
+* Predicted catch (in green) are obtained from a single *rnorm* draw from the obtained parameters, as extracted from the *pl4* object, plus the estimate of the standard deviation of $C_t$ (these were the predictions reported in the previous models).
+
+The lack of uncertainty estimate for $\sigma_C$ and the way the estimates for the latent variable follow the observation suggest overfitting. In hindsight, it should have been obvious from the beginning that the formulation for this model is so flexible that $X_t$ can neutralize the variations in $E_t$ and match the series perfectly, hence the null deviations. Without explicitly estimating the process for the latent variable to bound the process into its own domain, this model is pointless. 
 
 ```{r}
 #| fig-width: 12
-#| fig-height: 12
+#| fig-height: 4
 
+pred4 = c()
+for(i in seq_along(meanvec4)){pred4[i] = rnorm(1, meanvec4[i],sdy)}
 
 grid.arrange(
-  ggplot() + 
+ggplot() +
   geom_line(aes(x = 1:length(dat$y),
                 y = obj4$report()$predictions),
             color = 'red') +
   geom_line(aes(x = 1:length(dat$y),
-                y = (summary(sdr4, "random")[,'Estimate'] ^
-                        fit4$par['beta']) *
-                       (dat$eff^fit4$par['alpha']) + 
-                  rnorm(length(dat$y),
-                               0,
-                               exp(fit4$par['logsd_C']))) ,
-            color = 'purple', linetype = 2) +
-  theme_bw() +
-  labs(title = 'data (points) and catch predictions (line)'),
-ggplot() + 
-  geom_line(aes(x = 1:length(dat$y),
-                y = obj4$report()$predictions),
-            color = 'red') +
-  theme_bw() +
-   labs(title = 'data (points) and catch predictions (line)'),
-ggplot() + 
+                y = pred4),
+            color = 'green') +
   geom_line(aes(x = 1:length(dat$y),
                 y = summary(sdr4, "random")[,'Estimate']),
             color = 'purple') +
@@ -965,19 +970,12 @@ ggplot() +
                   2 * summary(sdr4, "random")[,'Std. Error']),
             fill = 'purple', linetype = 2, alpha = 0.3) +
   theme_bw() +
-   labs(title = 'Potential catch estimates (X(t)'),
-ggplot() +
-  geom_line(aes(x = 1:length(dat$y),
-                y = obj4$report()$predictions),
-            color = 'red') +
-  geom_line(aes(x = 1:length(dat$y),
-                y = summary(sdr4, "random")[,'Estimate']),
-            color = 'purple') +
-  theme_bw() +
    labs(title = 'data (points) and catch predictions (line)'),
 
   ncol=1)
 ```
+
+At this point I could have gone back and added the latent process, but I'd rather let this example stand as a reminder to future me about silly formulations and move on to the next model.
 
 ## Model 2.2: The Schaefer Surplus Production Model
 
