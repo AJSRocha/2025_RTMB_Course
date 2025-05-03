@@ -1,5 +1,6 @@
 ---
 title: "Report on the octopus fishery case study examined during the SEM Workshop"
+author: Alberto Rocha
 format:
    pdf:
        include-in-header:
@@ -26,6 +27,8 @@ The source for this document can be found in
 #| message: false
 #| warning: false
 
+set.seed(1)
+
 # tinytex::parse_install("report.log")
 # tinytex::tlmgr_update()
 
@@ -49,7 +52,6 @@ precip = c(-16.67,
            -241.87, 150.13, -300.17, 98.43, -85.87,
            -94.67,-156.87,-43.87,-106.37) + 
   735.8 + 105.7
-anos = 1994:2023
 
 mod_aux = lm(df_effort$catch ~ df_effort$effort)
 
@@ -81,7 +83,7 @@ In broad strokes, the octopus fishery in southern Portugal is a small scale fish
 
 Catch is obtained via reported landings. It can converted to number of individuals via a mean body weight model (fitted with spline regression, not described here), which is prefered in models such as generalized depletion models (GDMs).
 
-For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. In a serious report on this data these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
+For the purposes of this course, 2 outliers were forcefully removed from the dataset. One pertained to an imposed closure on the fishery, while the other was an abnormally low activity month, with 4 fishing days in the entire fleet and 0 octopus landed. Were this not an exercise, these gaps would have to be explained and accounted for, but for simplicity sake here they were replaced by the linear prediction of the series in the first outlier (catch-only) and the mean of the series (abnormal catch and effort).
 
 ```{r}
 #| echo: false
@@ -164,7 +166,7 @@ Just total rainfall in Algarve throughout the series period. Unlike the other da
 ```{r}
 #| echo: false
   ggplot() + 
-  geom_line(aes(x = anos,
+  geom_line(aes(x = 1994:2023,
                 y = precip)) + 
   theme_bw() + 
   labs(title = 'Yearly precipitation', x = 'year', y = 'precipitation')
@@ -194,11 +196,11 @@ df_effort %>%
 
 # First act: I flunked my time series course twice
 
-Upon inspecting the catch series ($C_t$), the instructors quickly pointed out that it seems to be an autorregressive process. While the temporal independence of the catches could be a matter of discussion (technically they are independent observations, but they are linked by a latent process). While such models have limited applicability for our purposes, we will start by fitting an $AR(1)$ model.
+Upon inspecting the catch series ($C_t$), the instructors quickly pointed out that it seems to be an autorregressive process. While the temporal independence of the catches could be a matter of discussion (technically they are independent observations, but they are linked by a latent process), it is a fair call to treat these observations as serially correlated. While such models have limited applicability for our purposes, we will start by fitting an $AR(1)$ model.
 
 ## Model 1.1: Baseline
 
-In this model we estimate $\phi$ and $C_{0}$ (which is the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation). $\phi$
+In this model we estimate $\phi$, $\epsilon_t$ and $C_{0}$ (which is the catch at $t = 0$ and not actually part of the catch series, hence why the need for estimation). 
 
 $$
 C_{t+1} = \phi \cdot C_t  + \epsilon_t
@@ -311,6 +313,8 @@ We got satisfactory model convergence, so we are starting with a working model a
 #| fig-width: 12
 #| echo: false
 
+set.seed(1)
+
 pred1 = c(fit$par['y0'])
   for(i in 2:length(dat$y)){
     pred1[i] = rnorm(1,
@@ -333,7 +337,7 @@ ggplot() +
 
 ## Model 1.2: With Precipitation
 
-In this version, we added rainfall $P_t$ from the previous year to the model. The series is actually lagged, so any given $P_{1995}$ will actually refer to the year of 1994, *eg*. This was done for ease of integration.
+In this version, we added rainfall $P_t$ from the previous year to the model. The series is actually lagged, so any given $P_{1995}$ will actually refer to the year of 1994, *eg*. This was done for ease of incorporating the series into the model.
 
 $$
 C_{t+1} = \phi \cdot C_t + \alpha\cdot P_t + \epsilon_t
@@ -341,6 +345,8 @@ $$
 
 ```{r}
 #| results: hide
+
+dat = list()
 dat$y = as.vector(df_effort$catch_otb)  # catches
 dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
 
@@ -412,7 +418,7 @@ log_lik2 = numeric(length(dat$y))
 # Vector of predicted means
 meanvec2 = c(pl2$y0)
   for(i in 2:length(dat$y)){
-    meanvec2[i] = tanh(pl2$atanh_phi)*meanvec[i-1] + pl2$alpha * dat$x[i]}
+    meanvec2[i] = tanh(pl2$atanh_phi)*meanvec2[i-1] + pl2$alpha * dat$x[i]}
   
 # Revert transformation of sigma(y)  
 sdy = exp(pl2$logsdY)
@@ -444,6 +450,8 @@ Below we can compare both models (Black is model 1, Blue is model 2. We still ha
 #| fig-height: 8
 #| fig-width: 12
 #| echo: false
+
+set.seed(1)
 
 pred2 = c(pl2$y0)
 for(i in 2:length(dat$y)){
@@ -491,6 +499,8 @@ Since we are not defining priors, parameters are assumed to follow a uniform dis
 
 ```{r}
 #| results: hide
+
+dat = list()
 dat$y = as.vector(df_effort$catch_otb)  # catches
 dat$x = as.vector(rep(precip[1:29], each = 12)) # rainfall
 
@@ -624,6 +634,8 @@ We can see that by both metrics and predictions, specifying the priors did not r
 #| fig-width: 12
 #| echo: false
 
+set.seed(1)
+
 pred3 = c(pl3$y0)
 for(i in 2:length(dat$y)){
   pred3[i] = 
@@ -667,23 +679,32 @@ ggplot() +
 ncol =1)
 ```
 
+The predictions of Model 1 and Model 3 are indeed very close to one another:
+
+```{r}
+(pred3-pred1) %>% hist()
+```
+
 ### Posterior analysis
 
 We can take this model a step further by taking a closer look at the posteriors:
 
 ```{r}
 #| results: hide
+#| warning: false
 mcmc3 = tmbstan(obj3,chains=1,iter=1000)
 temp =
 mcmc3 %>% 
   summary()
 ```
 
-This output is too wide to be rendered, this needs to be fixed
+\todo{This output is too wide to be rendered, this needs to be fixed. Also, some warnings in the MCMC chain}
 
 ```{r}
 #| eval: false
 #| output: asis
+#| echo: false
+
 temp$summary %>% 
   as.data.frame() %>% 
   xtable %>% 
@@ -818,6 +839,8 @@ $$
 
 ```{r}
 #| results: hide
+#| warning: false
+
 dat = list()
 
 dat$y = as.vector(df_effort$catch_otb)  # catches
@@ -884,9 +907,12 @@ pl4 = as.list(sdr4,"Est")
 plsd4 = as.list(sdr4,"Std")
 ```
 
+\todo[inline]{this chunk gave some NaN warnings which were supressed}
+
 ```{r}
-#| output: asis
 #| echo: false
+#| warning: false
+#| output: asis
 
 summary(sdr4) %>% 
   as.data.frame() %>% 
@@ -949,11 +975,15 @@ The lack of uncertainty estimate for $\sigma_C$ and the way the estimates for th
 #| fig-width: 12
 #| fig-height: 4
 
+set.seed(1)
+
 pred4 = c()
 for(i in seq_along(meanvec4)){pred4[i] = rnorm(1, meanvec4[i],sdy)}
 
 grid.arrange(
 ggplot() +
+    geom_point(aes(x = 1:length(dat$y),
+                 y = dat$y)) +
   geom_line(aes(x = 1:length(dat$y),
                 y = obj4$report()$predictions),
             color = 'red') +
@@ -997,10 +1027,11 @@ $$
 B_t \sim N(q \cdot \frac{C_t}{E_t}, \sigma_{B_t})
 $$
 
-for this to work, we need to estimate $q$, $K$, $r$, $B_0$ as well as every point for $B_t$. Fun times! At this time, we will not attempt to directly model parameter uncertainty nor the process error, because life is already too hard as it is.
+for this to work, we need to estimate $q$, $K$, $r$, $B_0$ as well as every point for $B_t$. Fun times! At this time, we will not attempt to directly model parameter uncertainty, because life is already too hard as it is.
 
 ```{r}
 #| results: hide
+#| warning: false
 dat = list()
 
 # DO NOT USE DATA FRAMES!
@@ -1080,18 +1111,20 @@ pl5 = as.list(sdr5,"Est")
 plsd5 = as.list(sdr5,"Std")
 ```
 
+\todo[inline]{NaN warnings were also produced here}
+
 ```{r}
 #| output: asis
-summary(sdr4) %>% 
+#| echo: false
+#| warning: false
+summary(sdr5) %>% 
   as.data.frame() %>% 
-  slice(-c(1:348)) %>% 
+  slice(-c(6:357)) %>% 
   xtable %>% 
   print(comment = F,
         sanitize.text.function = function(x) 
           {gsub("_", "\\\\_", x)})
 ```
-
-\todo[inline]{Update the meanvec and sd}
 
 ```{r}
 # Calculate AIC
@@ -1100,7 +1133,7 @@ k = length(fit5$par)
 aic_value5 = 2 * k - 2 * logLik_value5
 
 # Calculate WAIC
-log_lik5 = numeric(length(dat$y))
+log_lik5 = numeric(length(dat$Ct))
 
 # Vector of predicted means
 meanvec5 = c()
@@ -1112,7 +1145,7 @@ meanvec5 = c()
 # Revert transformation of sigma(y)  
 sdy = exp(pl5$logsdCt)
 
-for(i in 1:length(dat$y)){
+for(i in 1:length(dat$Ct)){
   log_lik5[i] = dnorm(dat$Ct[i], meanvec5[i], sdy, log=TRUE)
 }
 
@@ -1124,7 +1157,7 @@ waic5 = -2 * (lppd5 - p_waic5)
 
 ```{r}
 #| output: asis
-#| echo: true
+#| echo: false
 
 xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)',
                             ' $X_t = f(C_t)$', 'SPM'),
@@ -1135,31 +1168,29 @@ xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)',
           {gsub("_", "\\\\_", x)})
 ```
 
+The good news is, we were able to fit a model that yielded estimates and catch predictions that reside on this side of la la land, which is encouraging. However, the complete failure to estimate standard error for any parameter is catastrophic and realistically this model needs to go back to the drawing board. Maybe that is for the best, as if we were to believe the biomass estimates, catches would be dangerously close to depleting the stock!
+
 ```{r}
 #| fig-width: 12
-#| fig-height: 12
+#| fig-height: 4
+#| echo: false
+#| warning: false
 
+set.seed(1)
+
+pred5 = c()
+for(i in seq_along(meanvec5)){pred5[i] = rnorm(1, meanvec5[i],sdy)}
 
 grid.arrange(
-  ggplot() + 
+ggplot() +
+  geom_point(aes(x = 1:length(dat$Ct),
+                 y = dat$Ct)) + 
   geom_line(aes(x = 1:length(dat$Ct),
                 y = obj5$report()$catch_predictions),
             color = 'red') +
   geom_line(aes(x = 1:length(dat$Ct),
-                y = meanvec5 + 
-                  rnorm(length(dat$Ct),
-                               0,
-                               exp(fit5$par['logsdCt']))) ,
-            color = 'purple', linetype = 2) +
-  theme_bw() +
-  labs(title = 'data (points) and catch predictions (line)'),
-ggplot() + 
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj5$report()$catch_predictions),
-            color = 'red') +
-  theme_bw() +
-   labs(title = 'data (points) and catch predictions (line)'),
-ggplot() + 
+                y = pred5),
+            color = 'green') +
   geom_line(aes(x = 1:length(dat$Ct),
                 y = summary(sdr5, "random")[,'Estimate']),
             color = 'purple') +
@@ -1170,19 +1201,57 @@ ggplot() +
                   2 * summary(sdr5, "random")[,'Std. Error']),
             fill = 'purple', linetype = 2, alpha = 0.3) +
   theme_bw() +
-   labs(title = 'Potential catch estimates (X(t)'),
-ggplot() +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = obj5$report()$catch_predictions),
-            color = 'red') +
-  geom_line(aes(x = 1:length(dat$Ct),
-                y = summary(sdr5, "random")[,'Estimate']),
-            color = 'purple') +
-  theme_bw() +
    labs(title = 'data (points) and catch predictions (line)'),
 
   ncol=1)
 ```
+
+For the sake of the exercise, we can examine the biological reference points that this model would lead to.
+
+The maximum sustainable yield (*MSY*) in a Schaefer *SPM* can be quickly calculated as
+
+```{r}
+#| echo: false
+#| results: hide
+
+msy = pl5$r * pl5$K/ 4
+pl5$K/2
+
+```
+
+$$
+MSY = \frac{rk}{4} = \frac{0.55 \times 3049048}{4} = 422296.9
+$$
+
+Because we are assuming a symmetrical production curve, $B_{MSY} = K/2 =$ `r pl5$K/2`. From the earlier definitions, the surplus production each year is given by the overall biomass estimate at time $t$ minus the catch removal, or, in other words:
+
+$$
+P_t = rB_t \cdot (1-\frac{B}{K})
+$$
+
+We can generalize the production curve equilibrium for this model as:
+
+```{r}
+B = seq(0, pl5$K, by = pl5$K/10000) 
+P = pl5$r * B * (1 - B / pl5$K)
+  
+ggplot() + 
+  geom_point(aes(x = B,
+                 y = P)) + 
+  geom_vline(aes(xintercept = pl5$K/2),
+             col = 'red',
+             linetype = 2) +
+  geom_hline(aes(yintercept = msy),
+             col = 'red',
+             linetype = 2) + 
+  geom_point(aes(x = pred5,
+                  y = summary(sdr5,
+                              "random")[,'Estimate'])) +
+  theme_bw() + 
+  labs(title = 'Surplus Production Model (points = observations)')
+```
+
+So, if we were to trust this model (and the lack of standard error in the parameters should be a strong indicator not to!) then we would be looking at a stock whose biomass is on the very low end of the carrying capacity of its habitat and the fishing mortality being inflicted upon it has been consistently above the sustainability threshold.
 
 ## Model 2.3: A Surplus Production Model with the catch included as an autorregressive term
 
@@ -1198,27 +1267,192 @@ $$
 B_{t+1} = B_t \cdot (1 + \alpha ) \cdot \left(1 - \frac{B_t}{K} \right) \cdot C_t + \epsilon_t
 $$
 
+```{r}
+#| results: hide
+#| warning: false
+dat = list()
+
+# DO NOT USE DATA FRAMES!
+# P_{t-1} = lagP
+
+dat$Ct = as.vector(df_effort$catch_otb)  # catches
+dat$Et = as.vector(df_effort$effort_otb) # effort
+
+# initialize parameter list with initial estimates
+par = list()
+par$Bt = as.vector(rep(10000000,length(dat$Ct)))# init empty vector
+# par$meanBt = 100000
+
+par$q = 0.5
+par$alpha = 0.5
+par$K = 4*max(dat$Ct)
+# par$B0 = 0.5*par$K # % of stock depletion at time zero
+
+par$logsdBt = 1
+par$logsdCt = 1
+# par$logsdB0 = 1000
+# First pass: Linear model, lol
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  Ct = OBS(Ct)
+  sdBt = exp(logsdBt)
+  sdCt = exp(logsdCt)
+  # sdB0 = exp(logsdB0)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+ 
+  ## Prior distributions
+  ## The 1 in the mean fixes the prior distribution of alpha
+  jnll = jnll - dexp(alpha,1, log = TRUE)
+  jnll = jnll - dexp(q,0.1, log = TRUE)
+  jnll = jnll - dnorm(K, 1000000, 1000, log = TRUE)
+  
+  # prior on B0
+  jnll = jnll - dnorm(Bt[1], K/2, 1000, log = TRUE)
+  
+  ## From the observation equation
+ 
+  ## From the process equation
+  # Initial values
+  for(i in 2:length(Ct)){
+    predBt = Bt[i-1] + (1 + alpha) * (1-(Bt[i-1]/K)) * Ct[i-1]
+    jnll = jnll - dnorm(Bt[i], predBt, sdBt, log=TRUE)}
+  
+ 
+  catch_predictions = c()
+  for(i in 1:length(Ct)){
+   Ct_hat = q*Bt[i]*Et[i]
+   jnll = jnll -dnorm(Ct[i], Ct_hat, sdCt, log = TRUE)
+   catch_predictions[i] = Ct_hat
+  }
+   
+  REPORT(predBt)
+  REPORT(catch_predictions)
+  # REPORT(B0)
+  REPORT(Bt)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj6 = MakeADFun(jnll, par, random = 'Bt')
+fit6 = nlminb(obj6$par, obj6$fn, obj6$gr)
+
+sdr6 = sdreport(obj6)
+pl6 = as.list(sdr6,"Est")
+plsd6 = as.list(sdr6,"Std")
+```
+
+\todo[inline]{NaN warnings were also produced here}
+
+```{r}
+#| output: asis
+#| echo: false
+#| warning: false
+summary(sdr6) %>% 
+  as.data.frame() %>% 
+  slice(-c(6:357)) %>% 
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
+```
+
+```{r}
+# Calculate AIC
+logLik_value6 = -fit6$objective
+k = length(fit6$par)
+aic_value6 = 2 * k - 2 * logLik_value6
+
+# Calculate WAIC
+log_lik6 = numeric(length(dat$Ct))
+
+# Vector of predicted means
+meanvec6 = c()
+  for(i in 1:length(dat$Ct)){
+    meanvec6[i] = fit6$par['q'] * 
+      summary(sdr6, "random")[,'Estimate'][i] *
+      dat$Et[i] }
+  
+# Revert transformation of sigma(y)  
+sdy = exp(pl6$logsdCt)
+
+for(i in 1:length(dat$Ct)){
+  log_lik6[i] = dnorm(dat$Ct[i], meanvec6[i], sdy, log=TRUE)
+}
+
+lppd6 = sum(log(mean(exp(log_lik6))))
+p_waic6 = sum(var(log_lik6))
+waic6 = -2 * (lppd6 - p_waic6)
+
+```
+
+```{r}
+#| output: asis
+#| echo: false
+
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)',
+                            ' $X_t = f(C_t)$', 'SPM', 'Custom SPM'),
+                  AIC = c(aic_value, aic_value2, aic_value3, aic_value4, aic_value5, aic_value6), 
+                  WAIC = c(waic, waic2, waic3, waic4, waic5, waic6))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
+```
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4
+#| echo: false
+#| warning: false
+
+set.seed(1)
+
+pred6 = c()
+for(i in seq_along(meanvec6)){pred6[i] = rnorm(1, meanvec6[i],sdy)}
+
+grid.arrange(
+ggplot() +
+  geom_point(aes(x = 1:length(dat$Ct),
+                 y = dat$Ct)) + 
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = obj6$report()$catch_predictions),
+            color = 'red') +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = pred6),
+            color = 'green') +
+  geom_line(aes(x = 1:length(dat$Ct),
+                y = summary(sdr6, "random")[,'Estimate']),
+            color = 'purple') +
+  geom_ribbon(aes(x = 1:length(dat$Ct),
+                ymax = summary(sdr6, "random")[,'Estimate'] + 
+                  2 * summary(sdr6, "random")[,'Std. Error'],
+                ymin = summary(sdr6, "random")[,'Estimate'] - 
+                  2 * summary(sdr6, "random")[,'Std. Error']),
+            fill = 'purple', linetype = 2, alpha = 0.3) +
+  theme_bw() +
+   labs(title = 'data (points) and catch predictions (line)'),
+
+  ncol=1)
+```
+
+The lack of standard errors, the failure of updating the initial values of most parameters, the complete flatlining of biomass estimates to values around 40 kg (!) indicate that either this formulation is a dead-end or some serious work is required into tweaking the starting conditions. Unfortunately, time is limited and there is yet a third approach to consider.
+
 # Third act: The mask falls, and the AIC rises
 
-## Model 1: GDM, as seen on CatDyn
+So far we have considered basic autoregressive models, which are not very useful for inference, and surplus production models, which are a standard procedure for many data-limited fishing stocks but in the specific case of octopus have already been rejected as a viable option. A big part of my motivation in attending this workshop consisted in being able to explore myself a family of models that are currently seen as a workable solution for the octopus stock assessment problem: Generalized Depletion Models.
 
-# Parameters to be estimated
+The basic intuition behind these models is that the initial biomass is steadily depleted by both natural and fishing mortality that occur at every step of a granular time series (weekly or monthly), and that depletion is countered, or reset, by big spikes of abundance driven by migration or recruitment events. This approach is used sucessfully to monitor squid fisheries in-season and has recently been expanded to acommodate octopus stocks. For the remainder of this report, we will consider the approach employed by Roa-Ureta *et-al.* that is published and distributed in the *CatDyn* package. 
 
--   $\alpha$ is the abundance response
+## Formulation, step by step
 
--   $\beta$ is the effort response
-
-Both allow non-linearity for $E_t$ and $N_t$;
-
--   $k$ is a scaling factor
-
--   $M$ is the natural mortality (with $m = e^{-\frac{M}{2}}$)
-
--   $N_0$ is the initial abundance of the stock at $t_0$
-
-# Formulation, step by step
-
-Consider the condensed formulation of this model:
+Consider the condensed formulation of this model, where catch in numbers is modeled as a function of observed effort and several parameters.
 
 \begin{equation}
     \begin{aligned}
@@ -1227,6 +1461,8 @@ C_t = kE_t^\alpha N_t^\beta = m kE_t^\alpha f_t(M,N_0, C_{i<t}, R, S) \\
 \textrm{with} \quad m = e^{-\frac{M}{2}}
     \end{aligned}
 \end{equation}
+
+The author typically considers several distributions for this process and tries them, along as several optimizers, in a systematic, grid-search-like approach.
 
 In order to incorporate this model in RTBM, we will have to break down the abundance estimate ($N_t^\beta$) into chunks that are easier to process. First we present the complete formulation and then we'll break down the chunks of $f(t)$ *ie*, everything that is raised to $\beta$.
 
@@ -1237,12 +1473,6 @@ C_t = kE_t^\alpha  m \left( N_0 e^{-Mt} -m \left[ \sum_{i=i}^{i=t-1} C_{i,i} e^{
     \end{aligned}
 \end{equation}
 
-```{r}
-N0 = 1000000
-x = 1:348
-M = 0.05
-```
-
 ## Chunk 1: Exponential Population Growth
 
 \begin{equation}
@@ -1252,9 +1482,16 @@ N_0 e^{-Mt}
     \end{aligned}
 \end{equation}
 
-This is simply unconstrained population growth, modulated by the natural mortality $M$. Tentative approach:
+The first term consists simply of natural population decay driven by natural mortality $M$, as illustrated below. Unlike other models, birth-driven input (recruitment) is not incorporated at this stage in the model. The model is only concerned with individuals available to the fishery, so until recruits attain a size that makes them eligible they are not accounted for. Their entry into the fishery will be modelled as discrete spikes.
 
 ```{r}
+#| echo: false
+#| warning: false
+
+N0 = 1000000
+x = 1:348
+M = 0.05
+
 res_1 = c()
 # chunk 1
 for(tt in 1:length(x)){
@@ -1279,25 +1516,9 @@ res_1[tt] = ch1
     \end{aligned}
 \end{equation}
 
-This section incorporates the expected value for the catch in each year, with decay from natural mortality that intensifies the further you are from that year. It is explicitly recursive, unlike chunk 1, and therefore the code must account for that correctly. Specifically, $C_i$ accounts for the *entire* estimate and therefore this chunk can't be correctly computed without the remaining chunks
+This section incorporates the expected value for the catch in each year, with decay from natural mortality that intensifies the further you are from that year. It is explicitly recursive, unlike chunk 1, and therefore the code must account for that correctly. 
 
-```{r}
-res_2 = c()
-# chunk 1
-c_i = c()
-for(tt in 1:length(x)){
-  for(i in 1:(tt-1)){
-    catch = ifelse(tt == 1, res_1[1], c_i[tt-1])
-    c_i[i] = catch^-M*(tt-i-1)}
-  res_2[tt] = sum(c_i)*exp(-M*tt)
-}
-
-  ggplot() + 
-  geom_line(aes(x = x,
-                y = res_2)) + 
-  theme_bw() + 
-  labs(title = 'chunk 2')
-```
+It is unclear if $C_i$ accounts for the *entire* estimate in previous iterations or simply previous observations. For this report, the second alternative was implemented in the objective function
 
 ## Chunk 3: Recruitment pulse input
 
@@ -1308,12 +1529,36 @@ for(tt in 1:length(x)){
     \end{aligned}
 \end{equation}
 
-As described before, we require an index vector that is correctly specified. There is no documentation on how to handle multiple pulses in the same fishing season.
+This chunk adds the recruitment pulses at timing $\tau_j$, of magnitude $R_j$, modulated by the time passed between $t$ and $\tau_j$. There is a quirk in this formulation regarding the use of an indicator vector $I_j$, which in all papers published by the author of CatDyn is said to be 0 when $\tau_j < t$ and 1 afterwards. This interpretation, combined with the double negative signals in the exponential component of the chunk, leads to a scenario where recruitment spikes that occur after the time step $t$ contribute to $C_t$, where as spikes before $t$ are nullified by the 0 in the indicator vector $I_j$. 
+
+In this work, an alternative formulation that is sometimes used by the author where the indicator vector is ommited. This does not mitigate the exponent signal effect, however.
+
+Finally, the timings for the perturbations in the vector $\tau_j$ must be manually inserted by the user after visual inspection of the data. The author has develloped an approach regarding catch spike statistics that will not be discussed here, so for the sake of this report $\tau_j$ will be inserted manually into the parameter list.
+
+There is a similar chunk with an inverted signal that accounts for emigration pulses; in octopus fisheries this is thought to reflect the moments when females leave the fishery after spawning. Currently it is assumed, due to the fishing gears used in the portuguese fishery, that such an exit does not occur in this particular case.
+
+## Parameters to be estimated
+
+-   $\alpha$ is the abundance response
+
+-   $\beta$ is the effort response
+
+Both allow non-linearity for $E_t$ and $N_t$;
+
+-   $k$ is a scaling factor
+
+-   $M$ is the natural mortality (with $m = e^{-\frac{M}{2}}$)
+
+-   $N_0$ is the initial abundance of the stock at $t_0$
+
+-  $R_j$ are the recruitment pulse magnitudes
 
 ## Model 3.1: GDM, as seen on CatDyn
 
 ```{r}
 #| results: hide
+#| warning: false
+
 dat = list()
 
 # DO NOT USE DATA FRAMES!
@@ -1365,6 +1610,7 @@ jnll = function(par){
   N0 = exp(logN0)
   M = exp(logM)
   sdCt = exp(logsdCt)
+  # Rt = exp(logRt)
   
   
   # sdB0 = exp(logsdB0)
@@ -1426,7 +1672,7 @@ jnll = function(par){
 # quick test: do we get a number? This number should be a likelihood.
 jnll(par)
 
-obj7 = MakeADFun(jnll, par)
+obj7 = MakeADFun(jnll, par, random = 'Rt')
 fit7 = nlminb(obj7$par, obj7$fn, obj7$gr)
 
 sdr7 = sdreport(obj7)
@@ -1434,10 +1680,105 @@ pl7 = as.list(sdr7,"Est")
 plsd7 = as.list(sdr7,"Std")
 ```
 
+\todo[inline]{NaN warnings were also produced here}
+
 ```{r}
+#| output: asis
+#| echo: false
+#| warning: false
+summary(sdr7) %>% 
+  as.data.frame() %>% 
+  slice(-c(7:36)) %>%
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
+```
+
+```{r}
+# Calculate AIC
+logLik_value7 = -fit7$objective
+k = length(fit7$par)
+aic_value7 = 2 * k - 2 * logLik_value7
+
+# Calculate WAIC
+log_lik7 = numeric(length(dat$Ct))
+
+# Vector of predicted means
+meanvec7 = c()
+  for(mes in seq_along(dat$Ct)){
+    
+    m = exp(-exp(pl7$logM)/2)
+    
+    # core
+    
+    core = exp(pl7$logK)*(dat$Et[mes]^exp(pl7$logalpha)) * m 
+    
+    # M-driven decay
+    
+    part1 = exp(pl7$logN0)*exp(-exp(pl7$logM)*mes)
+    
+    # catch aggregation
+     
+    part2 = 0
+    for(mes_ant in seq_len(length(dat$Ct)-1)){
+      part2 = part2 + dat$Ct[mes_ant]*exp(-exp(pl7$logM)*(mes-mes_ant-1))}
+    
+    # Recruitment pulses
+    
+    part3 = 0
+    for(j in seq_along(dat$u[dat$u<=mes])){
+      part3 = part3 + 
+        summary(sdr7, 'random')[,'Estimate'][j]*
+        exp(-exp(pl7$logM)*(mes-dat$u[j]))}
+    
+    
+    # Assemble
+    pred = core * (part1 -m*part2 + part3)^exp(pl7$logbeta)
+    meanvec7[mes] = pred}
+  
+# Revert transformation of sigma(y)  
+sdy = exp(pl7$logsdCt)
+
+for(i in 1:length(dat$Ct)){
+  log_lik7[i] = dnorm(dat$Ct[i], meanvec7[i], sdy, log=TRUE)
+}
+
+lppd7 = sum(log(mean(exp(log_lik7))))
+p_waic7 = sum(var(log_lik7))
+waic7 = -2 * (lppd7 - p_waic7)
+
+```
+
+```{r}
+#| output: asis
+#| echo: false
+
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)',
+                            ' $X_t = f(C_t)$', 'SPM', 'Custom SPM', 'GMD'),
+                  AIC = c(aic_value, aic_value2, aic_value3, aic_value4, aic_value5, aic_value6, aic_value7), 
+                  WAIC = c(waic, waic2, waic3, waic4, waic5, waic6, waic7))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
+```
+
+Convergence was problematic, but we did achieve plausible estimates. $M$ and $N0$ did not yield standard error estimates, and we have some negative values for $R_j$, which should not be possible. We have explicitly excluded the scenario of exit pulses, but if we attempt to bound $R_j$ to positive values the model convergence completely falls apart. Perhaps that premise should be reevaluated?
+
+```{r}
+#| echo: false
+
+set.seed(1)
+pred7 = rnorm(348,
+              meanvec7,
+              sdy)
+
 ggplot() + 
-  geom_line(aes(x = 1:348,
-                y = dat$Ct)) + 
+  geom_point(aes(x = 1:348,
+                y = dat$Ct)) +
+   geom_line(aes(x = 1:348,
+                y = pred7),
+            color = 'green') + 
   geom_line(aes(x = 1:348,
                 y = obj7$report()['catch'] %>% unlist()),
             color = 'red') + 
@@ -1446,9 +1787,268 @@ ggplot() +
 
 ## Model 3.2: What if it rained on Model 1
 
+Finally, as an exercise, we will try adding precipitation as a multiplicative term.
+
+\begin{equation}
+    \begin{aligned}
+    \label{eq:catdyn_6}
+C_t = kE_t^\alpha  m \left( N_0 e^{-Mt} -m \left[ \sum_{i=i}^{i=t-1} C_{i,i} e^{-M(t-i-1)} \right] + \sum_{j=1}^{j=u} I_j R_j e^{-M(t-\tau_j)} - \sum_{l=1}^{l=v} J_l S_l e^{-M(t-\upsilon_l} \right) ^ \beta \cdot P_t ^ \gamma
+    \end{aligned}
+\end{equation}
+
+
+```{r}
+#| results: hide
+#| warning: false
+
+dat = list()
+
+# DO NOT USE DATA FRAMES!
+# P_{t-1} = lagP
+
+dat$Ct = as.vector(df_effort$catch_otb/df_effort$res)  # catches
+dat$Et = as.vector(df_effort$effort_otb) # effort
+dat$Pt = rep(precip, each = 12)
+
+indice_manual_2 = 
+  list(
+    12,12,12,12, 
+    12,12,12,12,12,
+    12,10,10,11,12,
+    12,12,10,11,12,
+    11,12,10,12,11,
+    12,12,12,12,10)
+
+for(i in 0:(length(indice_manual_2)-1)){
+  indice_manual_2[[i+1]] = 12*i + indice_manual_2[[i+1]]
+}
+
+dat$u = unlist(indice_manual_2) # recruitment pulse timings
+
+# initialize parameter list with initial estimates
+par = list()
+par$Rt = as.vector(rep(200000,length(dat$u)))# init empty vector
+# par$meanBt = 100000
+
+par$logalpha = log(0.6)
+par$logbeta = log(0.6)
+par$loggamma = log(0.6)
+par$logK = log(0.001)
+par$logN0 = log(600000000)
+par$logM = log(0.01)
+
+# par$B0 = 0.5*par$K # % of stock depletion at time zero
+
+par$logsdCt = 1
+# par$logsdB0 = 1000
+
+# initialize joint negative loglikelihood function
+jnll = function(par){
+  getAll(par, dat) # invoke all the parameters and data
+  
+  # gather and cleanup pars
+  Ct = OBS(Ct)
+  alpha = exp(logalpha)
+  beta = exp(logbeta)
+  gamma = exp(loggamma)
+  K = exp(logK)
+  N0 = exp(logN0)
+  M = exp(logM)
+  sdCt = exp(logsdCt)
+  # Rt = exp(logRt)
+  
+  
+  # sdB0 = exp(logsdB0)
+  
+  # assemble model    
+  jnll = 0 # init jnll
+ 
+  ## Prior distributions
+  ## The 1 in the mean fixes the prior distribution of r
+  # jnll = jnll - dexp(r,1, log = TRUE)
+  # jnll = jnll - dexp(q,0.1, log = TRUE)
+  # jnll = jnll - dnorm(K, 1000000, 1000, log = TRUE)
+  
+  # prior on N0
+  # jnll = jnll - dnorm(Bt[1], K/2, 1000, log = TRUE)
+  
+  ## From the observation equation
+ 
+  ## From the process equation
+  # Initial values
+ 
+  catch = c()
+  for(mes in seq_along(dat$Ct)){
+    
+    m = exp(-M/2)
+    
+    # core
+    
+    core = K*(Et[mes]^alpha) * m 
+    
+    # M-driven decay
+    
+    part1 = N0*exp(-M*mes)
+    
+    # catch aggregation
+     
+    part2 = 0
+    for(mes_ant in seq_len(length(dat$Ct)-1)){
+      part2 = part2 + Ct[mes_ant]*exp(-M*(mes-mes_ant-1))}
+    
+    # Recruitment pulses
+    
+    part3 = 0
+    for(j in seq_along(u[u<=mes])){
+      part3 = part3 + Rt[j]*exp(-M*(mes-u[j]))}
+    
+    
+    # Assemble
+    pred = core * (part1 -m*part2 + part3)^beta * Pt[mes]^gamma
+    catch[mes] = pred
+    
+    jnll = jnll - dnorm(Ct[mes], pred, sdCt, log = T)
+  
+  }
+  REPORT(catch)
+  jnll
+}
+
+# quick test: do we get a number? This number should be a likelihood.
+jnll(par)
+
+obj8 = MakeADFun(jnll, par, random = 'Rt')
+fit8 = nlminb(obj8$par, obj8$fn, obj8$gr)
+
+sdr8 = sdreport(obj8)
+pl8 = as.list(sdr8,"Est")
+plsd8 = as.list(sdr8,"Std")
+```
+
+\todo[inline]{NaN warnings were also produced here}
+
+```{r}
+#| output: asis
+#| echo: false
+#| warning: false
+summary(sdr8) %>% 
+  as.data.frame() %>% 
+  slice(-c(7:36)) %>%
+  xtable %>% 
+  print(comment = F,
+        sanitize.text.function = function(x) 
+          {gsub("_", "\\\\_", x)})
+```
+
+```{r}
+# Calculate AIC
+logLik_value8 = -fit8$objective
+k = length(fit8$par)
+aic_value8 = 2 * k - 2 * logLik_value8
+
+# Calculate WAIC
+log_lik8 = numeric(length(dat$Ct))
+
+# Vector of predicted means
+meanvec8 = c()
+  for(mes in seq_along(dat$Ct)){
+    
+    m = exp(-exp(pl8$logM)/2)
+    
+    # core
+    
+    core = exp(pl8$logK)*(dat$Et[mes]^exp(pl8$logalpha)) * m 
+    
+    # M-driven decay
+    
+    part1 = exp(pl8$logN0)*exp(-exp(pl8$logM)*mes)
+    
+    # catch aggregation
+     
+    part2 = 0
+    for(mes_ant in seq_len(length(dat$Ct)-1)){
+      part2 = part2 + dat$Ct[mes_ant]*exp(-exp(pl8$logM)*(mes-mes_ant-1))}
+    
+    # Recruitment pulses
+    
+    part3 = 0
+    for(j in seq_along(dat$u[dat$u<=mes])){
+      part3 = part3 + 
+        summary(sdr8, 'random')[,'Estimate'][j]*
+        exp(-exp(pl8$logM)*(mes-dat$u[j]))}
+    
+    
+    # Assemble
+    pred = core * (part1 -m*part2 + part3)^exp(pl8$logbeta) *
+      dat$Pt[mes] ^ exp(pl8$loggamma)
+    meanvec8[mes] = pred}
+  
+# Revert transformation of sigma(y)  
+sdy = exp(pl8$logsdCt)
+
+for(i in 1:length(dat$Ct)){
+  log_lik8[i] = dnorm(dat$Ct[i], meanvec8[i], sdy, log=TRUE)
+}
+
+lppd8 = sum(log(mean(exp(log_lik8))))
+p_waic8 = sum(var(log_lik8))
+waic8 = -2 * (lppd8 - p_waic8)
+
+```
+
+```{r}
+#| output: asis
+#| echo: false
+
+xtable(data.frame(Model = c('AR(1)', 'AR(1) + Pt', 'AR(1) + Pt (ii)',
+                            ' $X_t = f(C_t)$', 'SPM', 'Custom SPM', 'GMD', 'GMD + Pt'),
+                  AIC = c(aic_value, aic_value2, aic_value3, aic_value4, aic_value5, aic_value6, aic_value7, aic_value8), 
+                  WAIC = c(waic, waic2, waic3, waic4, waic5, waic6, waic7, waic8))) %>% 
+  print(comment = F,
+        sanitize.text.function = function(x)
+          {gsub("_", "\\\\_", x)})
+```
+
+Convergence times became larger by orders of magnitude with the addition of the new term. It is obvious that this model is extremely sensitive to the starting values of $\alpha$, $\beta$ and $\gamma$. The lack of standard error metrics in some parameters is still a problem.
+
+Most initial attempts yielded very low estimates for $\sigma_C$, in the orders of the tens of kg, which means the catch process was effectively deterministic. It took more than 20 tries to get a significantly different prediction (green line below).
+
+It is very hard to call this a success, but it a tentative approach in incorporating aditional variables in the original formulation.
+
+```{r}
+#| echo: false
+#| warning: false
+
+set.seed(1)
+pred8 = rnorm(348,
+              meanvec8,
+              sdy)
+
+ggplot() + 
+  geom_point(aes(x = 1:348,
+                y = dat$Ct)) +
+   geom_line(aes(x = 1:348,
+                y = pred8),
+            color = 'green') + 
+  geom_line(aes(x = 1:348,
+                y = obj8$report()['catch'] %>% unlist()),
+            color = 'red') + 
+  theme_bw()
+```
+
 # Conclusion and Final Remarks
 
-# Addendum: Some notes on RTMB running procedures:
+As stated initially, achieving brilliant insights into stock assessment for the portuguese octopus was not the main goal for attending this workshop. And even though I was very diligent in avoiding good decisions for the choice of models, some interesting observations were made along the way:
+
+* The surplus approach led me to examine closely the catch-effort dynamic and accept that, without a better abundance index, the only conclusion possible is that there is no contrast in the data, ie the stock is always at a very low level regarding it carrying capacity. But if the stock is so close to scarcity and there is no reflection of that in the capture per effort observations, then truly this model is inadequate to describe the fishery.
+
+* The fact that both generalized depletion models would only converge if recruitment pulses were allowed to be negative sugest that the premise where there are no significant exit events from the fishery should be reassessed. This is a key component of the approach and should be also tried in the original methodology in *CatDyn*, which will be the next step.
+
+Overall, I found *RTMB* a brilliant tool not only for its flexibility and ability to succeed in modelling, but also in the way it fails so transparently. I think the workshop did a terrific job of covering different applications for this approach and I look forward to actually build a non-silly model for this use case, iterate upon it and explore it in depth.
+
+Thank you.
+
+# Addendum: Some notes on RTMB running procedures for future reference:
 
 #### Parameters can be initialized without explicit assumptions on their prior distribution. Doing so will have the prior being assumed to be uniform:
 
