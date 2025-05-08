@@ -728,7 +728,7 @@ grid.arrange(
   #y0: prior = N(par$y0, 10000)
   ggplot(data.frame(x=c(min(prior_mean_y0-3*prior_sd_y0,
                              temp$summary['y0','mean'] - 3* temp$summary['y0','sd']),
-                        max(prior_mean_y0-3*prior_sd_y0,
+                        max(prior_mean_y0+3*prior_sd_y0,
                              temp$summary['y0','mean'] + 3* temp$summary['y0','sd']))), aes(x)) +
      stat_function(fun= function(x) dnorm(x,
                                           mean = prior_mean_y0,
@@ -748,7 +748,7 @@ grid.arrange(
     #alpha: prior = N(1, 0.5)
     ggplot(data.frame(x=c(min(prior_mean_alpha-3*prior_sd_alpha,
                              temp$summary['alpha','mean'] - 3* temp$summary['alpha','sd']),
-                        max(prior_mean_alpha-3*prior_sd_alpha,
+                        max(prior_mean_alpha+3*prior_sd_alpha,
                              temp$summary['alpha','mean'] + 3* temp$summary['alpha','sd']))), aes(x)) +
      stat_function(fun= function(x) dnorm(x ,mean = prior_mean_alpha,
                                           sd = prior_sd_alpha),
@@ -767,7 +767,7 @@ grid.arrange(
       #phi: prior = N(0, 0.5)
     ggplot(data.frame(x=c(min(prior_mean_phi-3*prior_sd_phi,
                              temp$summary['atanh_phi','mean'] - 3* temp$summary['atanh_phi','sd']),
-                        max(prior_mean_phi-3*prior_sd_phi,
+                        max(prior_mean_phi+3*prior_sd_phi,
                              temp$summary['atanh_phi','mean'] + 3* temp$summary['atanh_phi','sd']))), aes(x)) +
      stat_function(fun= function(x) dnorm(x ,mean = prior_mean_phi,
                                           sd = prior_sd_phi),
@@ -787,7 +787,7 @@ grid.arrange(
       #logsdy: prior = N(1, 1)
     ggplot(data.frame(x=c(min(prior_mean_logsdy-3*prior_sd_logsdy,
                              temp$summary['logsdY','mean'] - 3* temp$summary['logsdY','sd']),
-                        max(prior_mean_logsdy-3*prior_sd_logsdy,
+                        max(prior_mean_logsdy+3*prior_sd_logsdy,
                              temp$summary['logsdY','mean'] + 3* temp$summary['logsdY','sd']))), aes(x)) +
      stat_function(fun= function(x) dnorm(x ,mean = prior_mean_logsdy,
                                           sd = prior_sd_logsdy),
