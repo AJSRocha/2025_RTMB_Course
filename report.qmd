@@ -9,6 +9,10 @@ format:
 editor: visual
 ---
 
+\todo[inline]{The objective function and likelihood estimates for each observation, should be similar; REVIEW ALL WAIC CALCULATIONS}
+
+\todo[inline]{Check the messages around the xtable chunks. Use SupressMessage() and SupressWarnings() as needed}
+
 # Foreword
 
 The dataset that I brought to this workshop and will be using in this report consists of real data from the polyvalent fishery of octopus that is occurs in the Southern region of Algarve. Octopus, as most cephalopods, are somewhat infamous in fish stock assessment due to the fact that they are not fish and are quite problematic to assess properly due to their unique population dynamics and life cycle.
